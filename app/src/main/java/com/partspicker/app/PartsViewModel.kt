@@ -7,18 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 
-private val DEMO_PARTS = listOf(
-    Part("demo1", "A1023", "Aisle 1 - Bin 3"),
-    Part("demo2", "B2047", "Aisle 2 - Bin 1"),
-    Part("demo3", "C5590", "Shelf B - Row 2"),
-    Part("demo4", "D0012", "Drawer 4"),
-    Part("demo5", "E7781", "Aisle 1 - Bin 7")
-)
-
-private val DEMO_LOCATIONS = listOf(
-    "Aisle 1 - Bin 3", "Aisle 2 - Bin 1", "Shelf B - Row 2", "Drawer 4", "Aisle 1 - Bin 7"
-)
-
 class PartsViewModel(app: Application) : AndroidViewModel(app) {
     private val storage = Storage(app)
 
@@ -42,20 +30,13 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var locArmedPartId by mutableStateOf<String?>(null); private set
 
     init {
-        val storedParts = storage.loadParts()
-        val fresh = storedParts == null
-        parts = storedParts ?: DEMO_PARTS.also { storage.saveParts(it) }
+        parts = storage.loadParts() ?: emptyList()
 
-        val storedLocs = storage.loadLocations()
-        locations = storedLocs ?: run {
-            val derived = if (fresh) {
-                DEMO_LOCATIONS.map { LocationItem(PartsLogic.makeId(), it, "Demo locations") }
-            } else {
-                parts.map { it.location }
-                    .filter { it.isNotEmpty() }
-                    .distinctBy { it.lowercase() }
-                    .map { LocationItem(PartsLogic.makeId(), it, "Other locations") }
-            }
+        locations = storage.loadLocations() ?: run {
+            val derived = parts.map { it.location }
+                .filter { it.isNotEmpty() }
+                .distinctBy { it.lowercase() }
+                .map { LocationItem(PartsLogic.makeId(), it, "Other locations") }
             storage.saveLocations(derived)
             derived
         }
@@ -104,9 +85,23 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         resetFormAfterAdd(loc)
     }
 
+    /**
+     * Next-location suggestion after an add. If the just-used location is one of the
+     * Saved locations, step to the next entry in that saved list (spreadsheet-style:
+     * press Enter, move to the next saved row). If it isn't a saved location (or it's
+     * the last one in the list), fall back to incrementing the location code itself.
+     */
+    private fun suggestNextLocation(current: String): String {
+        val idx = locations.indexOfFirst { it.value.equals(current, ignoreCase = true) }
+        if (idx != -1) {
+            locations.getOrNull(idx + 1)?.let { return it.value }
+        }
+        return PartsLogic.nextLocationAfter(current)
+    }
+
     private fun resetFormAfterAdd(loc: String) {
         partNumberInput = ""
-        locationInput = PartsLogic.nextLocationAfter(loc)
+        locationInput = suggestNextLocation(loc)
         focusPartTick++
     }
 
