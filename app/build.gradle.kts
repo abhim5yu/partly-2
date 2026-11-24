@@ -16,9 +16,22 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            val path = System.getenv("KEYSTORE_PATH")
+            if (path != null) {
+                storeFile = file(path)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
