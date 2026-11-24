@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Parts Picker</title>
+<style>
+/* ==========================================================================
+   THEME TOKENS — edit only this block to restyle the whole app.
+   Solid colours only. Light + dark share the same structure.
+   ========================================================================== */
+:root {
+  --bg: #f0ece4;          /* warm off-white canvas */
+  --surface: #faf8f3;     /* raised slabs */
+  --surface-2: #e8e3d9;   /* tonal wells, tracks, secondary buttons */
+  --ink: #171510;         /* near-black hero + dock */
+  --on-ink: #f4f0e8;
+  --text: #171510;
+  --muted: #7a7467;
+  --line: #e4dfd3;
+  --accent: #d9482b;      /* the one accent: actions, markers, focus */
+  --on-accent: #ffffff;
+  --error: #b3321f;
+  --success: #2f7a4b;
+  --scrim: rgba(23, 21, 16, .5);
+
+  --font: "Avenir Next", "SF Pro Display", "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --r-s: 14px; --r: 22px; --r-xl: 32px; --pill: 999px;
+  --tap: 52px;
+
+  --lift: 0 1px 1px rgba(58,44,20,.05), 0 4px 10px rgba(58,44,20,.06), 0 16px 30px rgba(58,44,20,.07), inset 0 1px 0 rgba(255,255,255,.85);
+  --lift-s: 0 1px 1px rgba(58,44,20,.05), 0 3px 8px rgba(58,44,20,.06), inset 0 1px 0 rgba(255,255,255,.8);
+  --press: inset 0 1px 3px rgba(58,44,20,.14), inset 0 0 0 1px rgba(58,44,20,.04);
+  --pop: 0 24px 48px rgba(23,21,16,.3);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#11100e; --surface:#1b1916; --surface-2:#282521; --ink:#f2eee6; --on-ink:#15130f;
+  --text:#f2eee6; --muted:#9a9385; --line:#2b2824; --accent:#ff6f4a; --on-accent:#1a0d08;
+  --error:#ff8a77; --success:#6fd39a; --scrim:rgba(0,0,0,.65);
+  --lift:0 1px 1px rgba(0,0,0,.4), 0 6px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+  --lift-s:0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+  --press:inset 0 2px 4px rgba(0,0,0,.55); --pop:0 24px 48px rgba(0,0,0,.6);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg:#11100e; --surface:#1b1916; --surface-2:#282521; --ink:#f2eee6; --on-ink:#15130f;
+    --text:#f2eee6; --muted:#9a9385; --line:#2b2824; --accent:#ff6f4a; --on-accent:#1a0d08;
+    --error:#ff8a77; --success:#6fd39a; --scrim:rgba(0,0,0,.65);
+    --lift:0 1px 1px rgba(0,0,0,.4), 0 6px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+    --lift-s:0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+    --press:inset 0 2px 4px rgba(0,0,0,.55); --pop:0 24px 48px rgba(0,0,0,.6);
+  }
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 400 16px/1.4 var(--font); -webkit-tap-highlight-color: transparent;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+.hidden { display: none !important; }
+.masthead, main { max-width: 560px; margin: 0 auto; }
+.masthead { padding: 30px 22px 6px; }
+main { padding: 8px 16px calc(150px + env(safe-area-inset-bottom)); }
+html { scroll-padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+.eyebrow, .section-label, table#partsTable th, .entry::before {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+}
+.eyebrow { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+.eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+h1 { margin: 0; font-size: 44px; line-height: .95; font-weight: 800; letter-spacing: -.045em; }
+
+/* ---------- controls ---------- */
+button { font: 700 16px var(--font); min-height: var(--tap); min-width: var(--tap); border: 0; border-radius: var(--pill); cursor: pointer; transition: transform .08s, opacity .12s; }
+button:active { transform: scale(.97); }
+:is(button, input, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { background: var(--surface-2) !important; color: var(--muted) !important; box-shadow: var(--press) !important; cursor: not-allowed; transform: none; }
+.btn-primary, #addBtn, #addRangeBtn, #addModelCodeBtn, #addBulkModelBtn {
+  background: var(--accent); color: var(--on-accent); padding: 0 24px; box-shadow: var(--lift-s);
+}
+#addRangeBtn, #addModelCodeBtn, #addBulkModelBtn { width: 100%; }
+.btn-secondary { background: var(--surface-2); color: var(--text); }
+.btn-danger { background: var(--error); color: #fff; }
+.icon-btn { background: var(--surface-2); color: var(--text); width: 40px; height: 40px; min-width: 40px; min-height: 40px; padding: 0; font-size: 16px; }
+
+input[type="text"], .bulk-textarea {
+  font: 500 16px var(--font); color: var(--text); background: var(--surface-2);
+  border: 0; border-radius: var(--pill); box-shadow: var(--press);
+  height: var(--tap); padding: 0 20px; width: 100%; min-width: 0; text-overflow: ellipsis;
+}
+input::placeholder, .bulk-textarea::placeholder { color: var(--muted); opacity: 1; font-family: var(--font); font-size: 16px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+input[type="text"]:focus, .bulk-textarea:focus { background: var(--surface); outline: 2px solid var(--accent); outline-offset: 0; }
+.bulk-textarea { border-radius: var(--r); height: auto; padding: 14px 18px; line-height: 1.5; resize: vertical; font-weight: 400; }
+#locationInput, #rangeStartInput, #rangeEndInput, .range-letter-input { text-transform: uppercase; }
+#partNumberInput, .range-code-input, .model-code-input, .model-edit-code { font-family: var(--mono); font-weight: 700; letter-spacing: .02em; }
+
+.error-text, .success-text, .preview-text { font-size: 13px; margin: 0; min-height: 0; word-break: break-word; }
+.error-text { color: var(--error); font-weight: 600; }
+.success-text { color: var(--success); font-weight: 600; }
+.preview-text { color: var(--muted); }
+:is(.error-text, .success-text, .preview-text):empty { display: none; }
+
+/* ---------- masthead + bento ---------- */
+.bento { display: grid; grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; margin: 14px 0 6px; }
+.tile { border-radius: var(--r); padding: 14px 18px; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; background: var(--surface); box-shadow: var(--lift); min-width: 0; }
+.tile:nth-child(3) { background: var(--surface-2); box-shadow: var(--press); }
+.tile-hero { grid-row: 1 / 3; background: var(--ink) !important; color: var(--on-ink); border-radius: var(--r-xl); padding: 20px 22px; min-height: 172px; box-shadow: var(--lift); }
+.tile-num { font-size: 34px; font-weight: 800; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.tile-hero .tile-num { font-size: 84px; letter-spacing: -.06em; }
+.tile-lbl { font-size: 12px; font-weight: 600; color: var(--muted); }
+.tile-hero .tile-lbl { color: var(--on-ink); opacity: .65; font-size: 13px; }
+
+/* ---------- search (sticky, prominent) ---------- */
+.search-wrap { position: sticky; top: 0; z-index: 4; background: var(--bg); margin: 0 -16px; padding: 12px 16px; }
+.search-wrap svg { position: absolute; left: 36px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; color: var(--muted); pointer-events: none; }
+#searchInput { height: 58px; padding-left: 54px; font-size: 17px; background: var(--surface); box-shadow: var(--lift); }
+#searchInput:focus { background: var(--surface); }
+
+/* ---------- entry ---------- */
+.entry { display: grid; grid-template-columns: 1fr auto; gap: 10px; background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--lift); padding: 18px 16px 16px; margin: 4px 0 22px; }
+.entry::before { content: "New entry"; grid-column: 1 / -1; padding: 0 4px; }
+.entry .form-row { display: contents; }
+#partNumberInput { grid-column: 1 / -1; height: 58px; font-size: 20px; }
+.autocomplete-wrap { grid-column: 1; grid-row: 3; position: relative; min-width: 0; }
+#addBtn { grid-column: 2; grid-row: 3; }
+#formError { grid-column: 1 / -1; grid-row: 4; padding: 0 6px; }
+.suggestions-dropdown { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 6; margin: 0; padding: 6px; list-style: none; max-height: 240px; overflow-y: auto; background: var(--surface); border-radius: var(--r); box-shadow: var(--pop); }
+.suggestion-item { padding: 0 14px; min-height: 46px; display: flex; align-items: center; font-weight: 600; border-radius: var(--r-s); cursor: pointer; }
+.suggestion-item:active { background: var(--surface-2); }
+.suggestions-empty { padding: 14px; color: var(--muted); font-size: 14px; }
+
+/* ---------- inventory list ---------- */
+.list-meta { padding: 0 6px 10px; }
+.count-label { font-size: 15px; font-weight: 800; letter-spacing: -.01em; }
+.table-wrap { background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--lift); overflow: hidden; }
+table#partsTable { width: 100%; border-collapse: collapse; }
+table#partsTable th { text-align: left; padding: 18px 18px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table#partsTable td { padding: 16px 18px; border-bottom: 1px solid var(--line); vertical-align: middle; font-size: 15px; line-height: 1.25; }
+table#partsTable tbody tr:last-child td { border-bottom: 0; }
+table#partsTable td:nth-child(1) { font-family: var(--mono); font-weight: 700; font-size: 15px; letter-spacing: .01em; word-break: break-all; }
+table#partsTable td:nth-child(2) { font-weight: 600; white-space: nowrap; }
+table#partsTable td:nth-child(3) { color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: .04em; }
+.more-badge { display: inline-block; margin-left: 8px; padding: 3px 9px; border-radius: var(--pill); background: var(--surface-2); color: var(--accent); font: 800 12px/1 var(--font); letter-spacing: 0; vertical-align: 2px; box-shadow: var(--press); }
+table#partsTable .group-count { margin: 0; color: var(--muted); }
+table#partsTable tbody tr[data-id] { cursor: pointer; }
+table#partsTable tbody tr[data-id]:active { background: var(--surface-2); }
+.empty-row td { text-align: center !important; color: var(--muted); padding: 44px 18px !important; font-family: var(--font) !important; font-weight: 500 !important; letter-spacing: 0 !important; }
+
+/* ---------- floating dock ---------- */
+.dock { position: fixed; z-index: 8; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom)); background: var(--ink); border-radius: var(--pill); padding: 6px; box-shadow: 0 12px 28px rgba(23,21,16,.32), 0 2px 4px rgba(23,21,16,.2); }
+.dock button { background: transparent; color: var(--on-ink); display: flex; align-items: center; gap: 10px; padding: 0 22px 0 18px; min-height: 48px; }
+.dock button:active { background: color-mix(in srgb, var(--on-ink) 14%, transparent); }
+.dock svg { width: 20px; height: 20px; flex: none; }
+.dock button { line-height: 1; }
+
+/* ---------- settings ---------- */
+.section-label { margin: 28px 6px 10px; }
+.section-label:first-child { margin-top: 8px; }
+.theme-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 5px; background: var(--surface-2); border-radius: var(--pill); box-shadow: var(--press); }
+.theme-picker button { background: transparent; color: var(--muted); min-height: 44px; font-size: 14px; }
+.theme-picker button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--lift-s); }
+#openModelCodesBtn { width: 100%; display: flex; align-items: center; justify-content: space-between; min-height: 68px; padding: 0 24px; border-radius: var(--r); background: var(--surface); color: var(--text); font-size: 18px; font-weight: 800; letter-spacing: -.02em; box-shadow: var(--lift); }
+#openModelCodesBtn::after { content: ""; width: 22px; height: 22px; flex: none; background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14M13 5l7 7-7 7'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14M13 5l7 7-7 7'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+.slab { background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--lift); padding: 14px; display: grid; gap: 10px; }
+.well { background: var(--surface-2); border-radius: var(--r); padding: 12px; display: grid; gap: 10px; }
+.well input[type="text"], .well .bulk-textarea { background: var(--surface); box-shadow: 0 1px 2px rgba(58,44,20,.1); }
+.range-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--surface-2); border-radius: var(--r); padding: 12px; }
+.range-group input[type="text"] { background: var(--surface); box-shadow: 0 1px 2px rgba(58,44,20,.1); }
+.range-group-label { flex: 0 0 100%; font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); padding-left: 4px; }
+input.range-code-input { flex: 1 1 0; width: auto; font-size: 16px; }
+input.range-letter-input { flex: 0 0 52px; width: 52px; padding: 0; text-align: center; font-weight: 700; }
+.range-letter-sep { color: var(--muted); }
+#rangePreview, #rangeError, #rangeStatus { padding: 0 6px; }
+
+.settings-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.empty-state-settings { color: var(--muted); font-size: 14px; padding: 6px; }
+.location-group { background: var(--surface); border-radius: var(--r); box-shadow: var(--lift-s); overflow: hidden; }
+.location-group summary { display: flex; align-items: center; min-height: 56px; padding: 0 20px; font-weight: 800; letter-spacing: -.01em; cursor: pointer; list-style: none; }
+.location-group summary::-webkit-details-marker { display: none; }
+.location-group summary::before { content: "+"; width: 26px; height: 26px; border-radius: 50%; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 16px; color: var(--muted); }
+.location-group[open] summary::before { content: "–"; background: var(--accent); color: var(--on-accent); }
+.group-count { font-weight: 500; color: var(--muted); margin-left: 6px; }
+.group-items { list-style: none; margin: 0; padding: 0 8px 8px; }
+.location-item, .model-code-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 52px; padding: 2px 6px 2px 18px; font-weight: 600; }
+.group-items .location-item { border-top: 1px solid var(--line); border-radius: 0; }
+.group-items .location-item:first-child { border-top: 0; }
+.model-code-item { background: var(--surface); border-radius: var(--r); box-shadow: var(--lift-s); }
+.model-code-item.editing { padding: 8px; }
+.model-code-text { min-width: 0; word-break: break-word; font-weight: 500; }
+.model-code-text strong { font-family: var(--mono); font-weight: 800; }
+.model-code-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.delete-location-btn, .model-code-actions button { background: transparent; min-height: 40px; min-width: 40px; font-size: 15px; }
+.delete-location-btn, .delete-model-btn, .cancel-model-btn { color: var(--error); }
+.edit-model-btn, .save-model-btn { color: var(--accent); }
+.delete-location-btn, .model-code-actions button { font-family: system-ui, sans-serif; font-size: 18px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.location-group summary::before { line-height: 1; }
+input.model-edit-code { flex: 1 1 0; height: 42px; }
+input.model-edit-name { flex: 1.6 1 0; height: 42px; }
+.model-code-row { display: flex; gap: 8px; }
+input.model-code-input { flex: 1 1 0; }
+input.model-name-input { flex: 1.8 1 0; }
+input.model-code-input, input.model-name-input { padding: 0 16px; }
+
+/* ---------- duplicates ---------- */
+.alert { width: 100%; display: flex; align-items: center; gap: 14px; text-align: left; padding: 12px 16px 12px 12px; margin: 14px 0 0; border-radius: var(--r); background: var(--surface); color: var(--text); box-shadow: var(--lift); }
+.alert-icon { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; }
+.alert-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.alert-title { font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
+.alert-sub { font-size: 12px; font-weight: 500; color: var(--muted); }
+.alert svg { color: var(--muted); flex: none; }
+.alert + .bento { margin-top: 10px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 4px 20px; }
+.chip { padding: 8px 14px; border-radius: var(--pill); background: var(--surface-2); box-shadow: var(--press); font-weight: 700; font-size: 14px; }
+.dup-item { background: var(--surface); border-radius: var(--r); box-shadow: var(--lift-s); padding: 14px 16px 6px; }
+.dup-item .chip-row { margin: 12px 0 8px; }
+.dup-part { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: .01em; }
+.dup-top { display: flex; align-items: center; gap: 8px; }
+.dup-top .dup-part { flex: 0 1 auto; min-width: 0; word-break: break-all; }
+.dup-ignore { margin-left: auto; flex: none; min-height: 38px; min-width: 0; padding: 0 16px; background: var(--surface-2); color: var(--text); font-size: 13px; box-shadow: var(--press); }
+.dup-restore { width: 100%; margin-top: 12px; background: transparent; color: var(--muted); font-size: 14px; min-height: 44px; }
+.dup-count { margin-left: 10px; font: 700 12px var(--font); color: var(--muted); }
+
+/* ---------- location preview sheet ---------- */
+.loc-sheet { width: 100%; max-width: 560px; background: var(--bg); border-radius: var(--r-xl) var(--r-xl) 0 0; box-shadow: var(--pop); padding: 10px 16px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; max-height: 86vh; }
+.loc-sheet::before { content: ""; flex: none; width: 40px; height: 5px; border-radius: 3px; background: var(--surface-2); margin: 0 auto 16px; }
+.loc-head { flex: none; padding: 0 6px 14px; }
+.loc-head .eyebrow { margin-bottom: 6px; }
+.loc-head h2 { margin: 0; font-size: 30px; line-height: 1.05; font-weight: 800; letter-spacing: -.035em; word-break: break-word; }
+.loc-count { display: inline-block; margin-top: 10px; padding: 5px 12px; border-radius: var(--pill); background: var(--surface-2); box-shadow: var(--press); font-size: 13px; font-weight: 800; }
+.loc-parts { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; overflow-y: auto; min-height: 0; flex: 0 1 auto; max-height: 40vh; }
+.loc-part { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 4px 6px 4px 18px; background: var(--surface); border-radius: var(--r); box-shadow: var(--lift-s); }
+.loc-part-no { flex: 1; min-width: 0; font-family: var(--mono); font-weight: 800; font-size: 16px; word-break: break-all; }
+.loc-part-model { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
+.loc-part-del { flex: none; min-width: 44px; height: 44px; padding: 0 12px; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; }
+.loc-part-del svg { width: 20px; height: 20px; }
+.loc-part-del.armed { background: var(--error); color: var(--bg); }
+.loc-warn { flex: none; margin: 0 0 12px; padding: 12px 16px; border-radius: var(--r); background: var(--surface-2); box-shadow: var(--press); color: var(--error); font-size: 14px; font-weight: 700; line-height: 1.35; }
+.loc-actions { flex: none; display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+.loc-cancel { background: var(--surface-2); color: var(--text); }
+.loc-delete { background: var(--error); color: var(--bg); box-shadow: var(--lift-s); }
+@media (min-width: 600px) { .loc-sheet { border-radius: var(--r-xl); } .overlay:has(.loc-sheet) { align-items: center; } }
+
+/* ---------- sheets ---------- */
+.overlay { position: fixed; inset: 0; z-index: 10; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; }
+.confirm-box { width: 100%; max-width: 560px; background: var(--bg); border-radius: var(--r-xl) var(--r-xl) 0 0; box-shadow: var(--pop); padding: 10px 16px calc(18px + env(safe-area-inset-bottom)); }
+.confirm-box::before { content: ""; display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--surface-2); margin: 0 auto 16px; }
+.confirm-box p { margin: 0 4px 18px; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.confirm-actions { display: flex; gap: 8px; }
+.confirm-actions button { flex: 1; }
+.conflict-actions { flex-wrap: wrap; }
+.model-codes-box { max-height: 90vh; overflow-y: auto; }
+.model-codes-box .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.popup-title { margin: 0 4px !important; font-size: 26px !important; font-weight: 800 !important; letter-spacing: -.035em !important; }
+@media (min-width: 600px) { .overlay { align-items: center; } .confirm-box { border-radius: var(--r-xl); } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+</head>
+<body>
+
+<section id="mainScreen" class="screen">
+  <header class="masthead">
+    <p class="eyebrow">Inventory</p>
+    <h1>Parts Picker</h1>
+  </header>
+
+  <main>
+    <button id="dupAlertBtn" class="alert hidden" type="button">
+      <span class="alert-icon" aria-hidden="true">!</span>
+      <span class="alert-text"><span class="alert-title" id="dupAlertTitle"></span><span class="alert-sub">Same part number in more than one location</span></span>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <div class="bento" aria-label="Summary">
+      <div class="tile tile-hero"><span class="tile-lbl">Parts on file</span><span class="tile-num" id="statParts">0</span></div>
+      <div class="tile"><span class="tile-num" id="statLocations">0</span><span class="tile-lbl">Locations</span></div>
+      <div class="tile"><span class="tile-num" id="statModels">0</span><span class="tile-lbl">Model codes</span></div>
+    </div>
+
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input type="text" id="searchInput" placeholder="Search part number or location" autocomplete="off">
+    </div>
+
+    <section class="entry">
+      <div class="form-row">
+        <input type="text" id="partNumberInput" placeholder="Part number" autocomplete="off">
+        <div class="autocomplete-wrap">
+          <input type="text" id="locationInput" placeholder="Location" autocomplete="off">
+          <ul id="locationSuggestions" class="suggestions-dropdown hidden"></ul>
+        </div>
+      </div>
+      <button id="addBtn">Add part</button>
+      <div class="error-text" id="formError"></div>
+    </section>
+
+    <div class="list-meta">
+      <div class="count-label" id="countLabel"></div>
+    </div>
+    <div class="table-wrap">
+      <table id="partsTable">
+        <thead><tr><th>Part</th><th>Location</th><th>Model</th></tr></thead>
+        <tbody id="partsBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <nav class="dock"><button id="settingsBtn" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Settings</button></nav>
+</section>
+
+<section id="settingsScreen" class="screen hidden">
+  <header class="masthead">
+    <p class="eyebrow">Preferences</p>
+    <h1>Settings</h1>
+  </header>
+
+  <main>
+    <div class="section-label">Appearance</div>
+    <div class="theme-picker" id="themePicker">
+      <button type="button" data-theme-choice="auto">Auto</button>
+      <button type="button" data-theme-choice="light">Light</button>
+      <button type="button" data-theme-choice="dark">Dark</button>
+    </div>
+
+    <div class="section-label">Part number decoding</div>
+    <button id="openModelCodesBtn">Model codes</button>
+
+    <div class="section-label">Add a range</div>
+    <div class="slab">
+      <div class="range-group">
+        <span class="range-group-label">From</span>
+        <input type="text" id="rangeStartInput" class="range-code-input" placeholder="13A010101" autocomplete="off">
+        <input type="text" id="rangeFromLetterStart" data-letters-only="true" class="range-letter-input" placeholder="A" maxlength="1" autocomplete="off">
+        <span class="range-letter-sep">–</span>
+        <input type="text" id="rangeFromLetterEnd" data-letters-only="true" class="range-letter-input" placeholder="E" maxlength="1" autocomplete="off">
+      </div>
+      <div class="range-group">
+        <span class="range-group-label">To</span>
+        <input type="text" id="rangeEndInput" class="range-code-input" placeholder="13A010114" autocomplete="off">
+        <input type="text" id="rangeToLetterStart" data-letters-only="true" class="range-letter-input" placeholder="A" maxlength="1" autocomplete="off">
+        <span class="range-letter-sep">–</span>
+        <input type="text" id="rangeToLetterEnd" data-letters-only="true" class="range-letter-input" placeholder="E" maxlength="1" autocomplete="off">
+      </div>
+      <div class="preview-text" id="rangePreview"></div>
+      <div class="error-text" id="rangeError"></div>
+      <div class="success-text" id="rangeStatus"></div>
+      <button id="addRangeBtn" disabled>Add range</button>
+    </div>
+
+    <div class="section-label">Saved locations</div>
+    <ul id="locationsList" class="settings-list"></ul>
+  </main>
+
+  <nav class="dock"><button id="closeSettingsBtn" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 5l-7 7 7 7"/></svg>Back</button></nav>
+</section>
+
+<div id="modelCodesOverlay" class="overlay hidden">
+  <div class="confirm-box model-codes-box">
+    <div class="header-top">
+      <p class="popup-title">Model codes</p>
+      <button id="closeModelCodesBtn" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+
+    <div class="well">
+      <div class="model-code-row">
+        <input type="text" id="modelCodeInput" class="model-code-input" placeholder="Code e.g. CC" autocomplete="off">
+        <input type="text" id="modelNameInput" class="model-name-input" placeholder="Model e.g. SONET" autocomplete="off">
+      </div>
+      <div class="error-text" id="modelCodeError"></div>
+      <button id="addModelCodeBtn">Add</button>
+    </div>
+
+    <div class="section-label">Bulk add (paste a list)</div>
+    <div class="well">
+      <textarea id="bulkModelInput" class="bulk-textarea" rows="4" placeholder="CC, SONET&#10;AB - ALPHA&#10;DX: DELTA-X"></textarea>
+      <div class="preview-text" id="bulkModelPreview"></div>
+      <div class="error-text" id="bulkModelError"></div>
+      <div class="success-text" id="bulkModelStatus"></div>
+      <button id="addBulkModelBtn" disabled>Add pasted codes</button>
+    </div>
+
+    <div class="section-label">Saved model codes</div>
+    <ul id="modelCodesList" class="settings-list"></ul>
+  </div>
+</div>
+
+<div id="dupAddOverlay" class="overlay hidden">
+  <div class="confirm-box">
+    <p id="dupAddMessage"></p>
+    <div class="chip-row" id="dupAddLocations"></div>
+    <div class="confirm-actions">
+      <button id="dupAddCancelBtn" class="btn-secondary">Cancel</button>
+      <button id="dupAddConfirmBtn" class="btn-primary">Add here</button>
+    </div>
+  </div>
+</div>
+
+<div id="dupViewOverlay" class="overlay hidden">
+  <div class="confirm-box model-codes-box">
+    <div class="header-top">
+      <p class="popup-title">Duplicates</p>
+      <button id="dupViewCloseBtn" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <ul id="dupViewList" class="settings-list"></ul>
+    <button id="dupRestoreBtn" class="dup-restore hidden" type="button"></button>
+  </div>
+</div>
+
+<div id="locSheet" class="overlay hidden">
+  <div class="loc-sheet" role="dialog" aria-modal="true" aria-labelledby="locSheetTitle">
+    <div class="loc-head">
+      <p class="eyebrow">Location</p>
+      <h2 id="locSheetTitle"></h2>
+      <span class="loc-count" id="locSheetCount"></span>
+    </div>
+    <ul class="loc-parts" id="locSheetParts"></ul>
+    <p class="loc-warn hidden" id="locSheetWarn"></p>
+    <div class="loc-actions">
+      <button id="locCancelBtn" class="loc-cancel">Cancel</button>
+      <button id="locDeleteBtn" class="loc-delete">Delete location</button>
+    </div>
+  </div>
+</div>
+
+<div id="locationConflictOverlay" class="overlay hidden">
+  <div class="confirm-box">
+    <p id="locationConflictMessage"></p>
+    <div class="confirm-actions conflict-actions">
+      <button id="conflictCancelBtn" class="btn-secondary">Cancel</button>
+      <button id="conflictAddBtn" class="btn-secondary">Add anyway</button>
+      <button id="conflictReplaceBtn" class="btn-danger">Replace</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "partsPickerData";
+  var LOCATIONS_KEY = "partsPickerLocations";
+  var MODEL_CODES_KEY = "partsPickerModelCodes";
+
+  var partNumberInput = document.getElementById("partNumberInput");
+  var locationInput = document.getElementById("locationInput");
+  var addBtn = document.getElementById("addBtn");
+  var formError = document.getElementById("formError");
+  var searchInput = document.getElementById("searchInput");
+  var partsBody = document.getElementById("partsBody");
+  var countLabel = document.getElementById("countLabel");
+  var locationSuggestions = document.getElementById("locationSuggestions");
+  var MAX_SUGGESTIONS = 50;
+
+  var mainScreen = document.getElementById("mainScreen");
+  var settingsScreen = document.getElementById("settingsScreen");
+  var settingsBtn = document.getElementById("settingsBtn");
+  var closeSettingsBtn = document.getElementById("closeSettingsBtn");
+  var locationsList = document.getElementById("locationsList");
+
+  var rangeStartInput = document.getElementById("rangeStartInput");
+  var rangeEndInput = document.getElementById("rangeEndInput");
+  var rangeFromLetterStart = document.getElementById("rangeFromLetterStart");
+  var rangeFromLetterEnd = document.getElementById("rangeFromLetterEnd");
+  var rangeToLetterStart = document.getElementById("rangeToLetterStart");
+  var rangeToLetterEnd = document.getElementById("rangeToLetterEnd");
+  var rangePreview = document.getElementById("rangePreview");
+  var rangeError = document.getElementById("rangeError");
+  var rangeStatus = document.getElementById("rangeStatus");
+  var addRangeBtn = document.getElementById("addRangeBtn");
+
+  var openModelCodesBtn = document.getElementById("openModelCodesBtn");
+  var modelCodesOverlay = document.getElementById("modelCodesOverlay");
+  var closeModelCodesBtn = document.getElementById("closeModelCodesBtn");
+  var modelCodeInput = document.getElementById("modelCodeInput");
+  var modelNameInput = document.getElementById("modelNameInput");
+  var modelCodeError = document.getElementById("modelCodeError");
+  var addModelCodeBtn = document.getElementById("addModelCodeBtn");
+  var bulkModelInput = document.getElementById("bulkModelInput");
+  var bulkModelPreview = document.getElementById("bulkModelPreview");
+  var bulkModelError = document.getElementById("bulkModelError");
+  var bulkModelStatus = document.getElementById("bulkModelStatus");
+  var addBulkModelBtn = document.getElementById("addBulkModelBtn");
+  var modelCodesList = document.getElementById("modelCodesList");
+
+  var locSheet = document.getElementById("locSheet");
+  var locSheetTitle = document.getElementById("locSheetTitle");
+  var locSheetCount = document.getElementById("locSheetCount");
+  var locSheetParts = document.getElementById("locSheetParts");
+  var locSheetWarn = document.getElementById("locSheetWarn");
+  var locCancelBtn = document.getElementById("locCancelBtn");
+  var locDeleteBtn = document.getElementById("locDeleteBtn");
+
+  var locationConflictOverlay = document.getElementById("locationConflictOverlay");
+  var locationConflictMessage = document.getElementById("locationConflictMessage");
+  var dupAlertBtn = document.getElementById("dupAlertBtn");
+  var dupAlertTitle = document.getElementById("dupAlertTitle");
+  var dupAddOverlay = document.getElementById("dupAddOverlay");
+  var dupAddMessage = document.getElementById("dupAddMessage");
+  var dupAddLocations = document.getElementById("dupAddLocations");
+  var dupAddCancelBtn = document.getElementById("dupAddCancelBtn");
+  var dupAddConfirmBtn = document.getElementById("dupAddConfirmBtn");
+  var dupViewOverlay = document.getElementById("dupViewOverlay");
+  var dupViewList = document.getElementById("dupViewList");
+  var dupViewCloseBtn = document.getElementById("dupViewCloseBtn");
+  var pendingDupPart = null;
+  var IGNORED_KEY = "partsPickerIgnoredDuplicates";
+  var ignoredDups = loadIgnoredDups();
+  var dupRestoreBtn = document.getElementById("dupRestoreBtn");
+  var conflictCancelBtn = document.getElementById("conflictCancelBtn");
+  var conflictAddBtn = document.getElementById("conflictAddBtn");
+  var conflictReplaceBtn = document.getElementById("conflictReplaceBtn");
+  var pendingNewPart = null;
+
+  var parts = [];
+  var locations = [];
+  var wasFreshInstall = false;
+  var locSheetKey = null;
+  var locSheetConfirming = false;
+  var locArmedPartId = null;
+  var currentRangeCodes = null;
+  var openGroups = {};
+  var modelCodes = [];
+  var editingModelCodeId = null;
+  var currentBulkModelRows = null;
+  var MAX_RANGE_SIZE = 2000;
+
+  function makeId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  // Whole-app rule: every text input/textarea is uppercase-only. Delegated on
+  // document (capture phase, so it runs before any element's own "input"
+  // listener reads .value) so it covers everything, including inputs created
+  // later by re-renders (e.g. the model-code edit row), with no per-element
+  // wiring needed. data-letters-only="true" additionally strips non-letters
+  // (used by the single-character range-letter boxes).
+  document.addEventListener("input", function (e) {
+    var el = e.target;
+    if (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") return;
+    if (el.tagName === "INPUT" && el.type !== "text") return;
+
+    var pos = el.selectionStart;
+    var val = el.value;
+    if (el.getAttribute("data-letters-only") === "true") {
+      val = val.replace(/[^a-zA-Z]/g, "");
+    }
+    val = val.toUpperCase();
+    if (val !== el.value) {
+      el.value = val;
+      try { el.setSelectionRange(pos, pos); } catch (err) { /* ignore */ }
+    }
+  }, true);
+
+  var DEMO_DATA = [
+    { id: "demo1", partNumber: "A1023",  location: "Aisle 1 - Bin 3" },
+    { id: "demo2", partNumber: "B2047",  location: "Aisle 2 - Bin 1" },
+    { id: "demo3", partNumber: "C5590",  location: "Shelf B - Row 2" },
+    { id: "demo4", partNumber: "D0012",  location: "Drawer 4" },
+    { id: "demo5", partNumber: "E7781",  location: "Aisle 1 - Bin 7" }
+  ];
+
+  var DEMO_LOCATIONS = [
+    "Aisle 1 - Bin 3",
+    "Aisle 2 - Bin 1",
+    "Shelf B - Row 2",
+    "Drawer 4",
+    "Aisle 1 - Bin 7"
+  ];
+
+  function loadParts() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw === null) {
+        // Fresh install only — never runs again once anything has been saved.
+        wasFreshInstall = true;
+        parts = DEMO_DATA.slice();
+        saveParts();
+        return;
+      }
+      parts = JSON.parse(raw);
+      if (!Array.isArray(parts)) parts = [];
+    } catch (e) {
+      console.error("Failed to load parts:", e);
+      parts = [];
+    }
+  }
+
+  function saveParts() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parts));
+    } catch (e) {
+      console.error("Failed to save parts:", e);
+      formError.textContent = "Could not save — storage may be full.";
+    }
+  }
+
+  function loadLocations() {
+    try {
+      var raw = localStorage.getItem(LOCATIONS_KEY);
+      if (raw === null) {
+        if (wasFreshInstall) {
+          locations = DEMO_LOCATIONS.map(function (v) {
+            return { id: makeId(), value: v, group: "Demo locations" };
+          });
+        } else {
+          // Upgrading from a version with no locations list: derive it from
+          // existing saved parts so nothing already saved is lost or reset.
+          var seen = {};
+          locations = [];
+          parts.forEach(function (p) {
+            var key = (p.location || "").toLowerCase();
+            if (p.location && !seen[key]) {
+              seen[key] = true;
+              locations.push({ id: makeId(), value: p.location, group: "Other locations" });
+            }
+          });
+        }
+        saveLocations();
+        return;
+      }
+
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) parsed = [];
+
+      // Migrate from the older plain-string format (if present) without losing data.
+      var hadLegacyStrings = false;
+      locations = parsed.map(function (item) {
+        if (typeof item === "string") {
+          hadLegacyStrings = true;
+          return { id: makeId(), value: item, group: "Other locations" };
+        }
+        return item;
+      });
+      if (hadLegacyStrings) saveLocations();
+    } catch (e) {
+      console.error("Failed to load locations:", e);
+      locations = [];
+    }
+  }
+
+  function saveLocations() {
+    try {
+      localStorage.setItem(LOCATIONS_KEY, JSON.stringify(locations));
+    } catch (e) {
+      console.error("Failed to save locations:", e);
+      rangeError.textContent = "Could not save — storage may be full.";
+    }
+  }
+
+  function loadModelCodes() {
+    try {
+      var raw = localStorage.getItem(MODEL_CODES_KEY);
+      modelCodes = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(modelCodes)) modelCodes = [];
+    } catch (e) {
+      console.error("Failed to load model codes:", e);
+      modelCodes = [];
+    }
+  }
+
+  function saveModelCodes() {
+    try {
+      localStorage.setItem(MODEL_CODES_KEY, JSON.stringify(modelCodes));
+    } catch (e) {
+      console.error("Failed to save model codes:", e);
+      modelCodeError.textContent = "Could not save — storage may be full.";
+    }
+  }
+
+  function findModelCodeByCode(code) {
+    return modelCodes.find(function (m) {
+      return m.code.toLowerCase() === code.toLowerCase();
+    });
+  }
+
+  // A part number can only contain saved codes (nothing is invented), and if
+  // more than one saved code appears in it, the longest match wins (most
+  // specific) — e.g. if both "C" and "CC" are saved and both appear, "CC" wins.
+  function getModelForPartNumber(partNumber) {
+    if (!partNumber) return "";
+    var pn = partNumber.toUpperCase();
+    var best = null;
+    modelCodes.forEach(function (m) {
+      var code = m.code.toUpperCase();
+      if (code && pn.indexOf(code) !== -1) {
+        if (!best || code.length > best.code.length) {
+          best = { code: code, model: m.model };
+        }
+      }
+    });
+    return best ? best.model : "";
+  }
+
+  function hideLocationSuggestions() {
+    locationSuggestions.classList.add("hidden");
+    locationSuggestions.innerHTML = "";
+  }
+
+  function renderLocationSuggestions() {
+    var query = locationInput.value.trim().toLowerCase();
+    if (!query) {
+      hideLocationSuggestions();
+      return;
+    }
+    var matches = locations.filter(function (l) {
+      return l.value.toLowerCase().indexOf(query) !== -1;
+    }).slice(0, MAX_SUGGESTIONS);
+
+    if (matches.length === 0) {
+      locationSuggestions.innerHTML = '<li class="suggestions-empty">No matching locations</li>';
+    } else {
+      locationSuggestions.innerHTML = matches.map(function (l) {
+        return '<li class="suggestion-item" data-value="' + escapeHtml(l.value) + '">' +
+          escapeHtml(l.value) +
+        '</li>';
+      }).join("");
+    }
+    locationSuggestions.classList.remove("hidden");
+  }
+
+  function locationExists(value) {
+    return locations.some(function (l) {
+      return l.value.toLowerCase() === value.toLowerCase();
+    });
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Part numbers the user marked as intentionally in several locations.
+  function loadIgnoredDups() {
+    try {
+      var v = JSON.parse(localStorage.getItem(IGNORED_KEY) || "[]");
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+
+  function saveIgnoredDups() {
+    try { localStorage.setItem(IGNORED_KEY, JSON.stringify(ignoredDups)); } catch (e) {}
+  }
+
+  // Part numbers that sit in more than one distinct location.
+  function findDuplicates(includeIgnored) {
+    var map = {};
+    var order = [];
+    parts.forEach(function (p) {
+      var key = p.partNumber.toLowerCase();
+      if (!map[key]) { map[key] = { partNumber: p.partNumber, locs: [], seen: {} }; order.push(key); }
+      var lk = p.location.toLowerCase();
+      if (!map[key].seen[lk]) { map[key].seen[lk] = true; map[key].locs.push(p.location); }
+    });
+    return order.map(function (k) { return map[k]; }).filter(function (g) {
+      return g.locs.length > 1 && (includeIgnored || ignoredDups.indexOf(g.partNumber.toLowerCase()) === -1);
+    });
+  }
+
+  function chipsHtml(locs) {
+    return locs.map(function (l) { return '<span class="chip">' + escapeHtml(l) + '</span>'; }).join("");
+  }
+
+  function updateDuplicateAlert() {
+    var n = findDuplicates().length;
+    dupAlertBtn.classList.toggle("hidden", n === 0);
+    dupAlertTitle.textContent = n + " duplicate" + (n === 1 ? "" : "s") + " found";
+  }
+
+  function render() {
+    updateDuplicateAlert();
+    var query = searchInput.value.trim().toLowerCase();
+    var filtered = parts.filter(function (p) {
+      if (!query) return true;
+      return p.partNumber.toLowerCase().indexOf(query) !== -1 ||
+             p.location.toLowerCase().indexOf(query) !== -1;
+    });
+
+    // newest first
+    var ordered = filtered.slice().reverse();
+
+    // With no search, show one row per location: its newest part, plus how
+    // many other parts share it. Searching lists every matching part.
+    var extraCount = {};
+    var grouped = !query;
+    if (grouped) {
+      var seen = {};
+      ordered = ordered.filter(function (p) {
+        var key = p.location.toLowerCase();
+        if (seen[key]) { extraCount[key]++; return false; }
+        seen[key] = true;
+        extraCount[key] = 0;
+        return true;
+      });
+    }
+
+    countLabel.textContent = parts.length === 0
+      ? ""
+      : grouped
+        ? (ordered.length + " location" + (ordered.length === 1 ? "" : "s") + " · " + parts.length + " part" + (parts.length === 1 ? "" : "s"))
+        : (ordered.length + " of " + parts.length + " shown");
+
+    if (ordered.length === 0) {
+      var message = parts.length === 0 ? "No parts saved yet." : "No matches.";
+      partsBody.innerHTML = '<tr class="empty-row"><td colspan="3">' + message + '</td></tr>';
+      return;
+    }
+
+    partsBody.innerHTML = ordered.map(function (p) {
+      var model = getModelForPartNumber(p.partNumber);
+      return '<tr data-id="' + p.id + '">' +
+        '<td>' + escapeHtml(p.partNumber) +
+          (grouped && extraCount[p.location.toLowerCase()] > 0
+            ? '<span class="more-badge">+' + extraCount[p.location.toLowerCase()] + '</span>' : '') +
+        '</td>' +
+        '<td>' + escapeHtml(p.location) + '</td>' +
+        '<td>' + (model ? escapeHtml(model) : '<span class="group-count">—</span>') + '</td>' +
+      '</tr>';
+    }).join("");
+  }
+
+  function resetFormAfterAdd(location) {
+    partNumberInput.value = "";
+    locationInput.value = nextLocationAfter(location);
+    partNumberInput.focus();
+    render();
+  }
+
+  function finalizeAddPart(partNumber, location) {
+    parts.push({
+      id: makeId(),
+      partNumber: partNumber,
+      location: location
+    });
+    saveParts();
+    resetFormAfterAdd(location);
+  }
+
+  function addPart() {
+    var partNumber = partNumberInput.value.trim();
+    var location = locationInput.value.trim();
+
+    if (!partNumber || !location) {
+      formError.textContent = "Enter both a part number and a location.";
+      return;
+    }
+    formError.textContent = "";
+
+    // Same part number already stored in a different location: ask first.
+    var elsewhere = [];
+    parts.forEach(function (p) {
+      if (p.partNumber.toLowerCase() === partNumber.toLowerCase() &&
+          p.location.toLowerCase() !== location.toLowerCase() &&
+          elsewhere.indexOf(p.location) === -1) {
+        elsewhere.push(p.location);
+      }
+    });
+    if (elsewhere.length) {
+      pendingDupPart = { partNumber: partNumber, location: location };
+      dupAddMessage.textContent = 'Part "' + partNumber + '" is already in ' +
+        (elsewhere.length === 1 ? "this location" : "these locations") +
+        '. Do you want to add it to "' + location + '" too?';
+      dupAddLocations.innerHTML = chipsHtml(elsewhere);
+      dupAddOverlay.classList.remove("hidden");
+      return;
+    }
+
+    continueAddPart(partNumber, location);
+  }
+
+  function continueAddPart(partNumber, location) {
+    var existingPart = parts.find(function (p) {
+      return p.location.toLowerCase() === location.toLowerCase();
+    });
+
+    if (existingPart) {
+      pendingNewPart = { partNumber: partNumber, location: location };
+      locationConflictMessage.textContent =
+        'Location "' + location + '" already has part "' + existingPart.partNumber +
+        '". Add this as another part here, or replace it?';
+      locationConflictOverlay.classList.remove("hidden");
+      return;
+    }
+
+    finalizeAddPart(partNumber, location);
+  }
+
+  // Computes the next location purely from the code itself — no saved list
+  // needed. Trailing letter cycles A through Z; once it wraps past Z, it
+  // resets to A and carries into the number before it (plain decimal
+  // increment, growing past the original digit width as needed: 99 -> 100).
+  // A code with no trailing letter just has its trailing number incremented
+  // the same way. Returns "" if there's nothing to increment.
+  function incrementTrailingNumber(prefix, numStr) {
+    var width = numStr.length;
+    var next = String(parseInt(numStr, 10) + 1);
+    while (next.length < width) next = "0" + next;
+    return prefix + next;
+  }
+
+  function nextLocationAfter(value) {
+    if (!value) return "";
+
+    var withLetter = value.match(/^(.*?)(\d+)([A-Za-z])$/);
+    if (withLetter) {
+      var prefix = withLetter[1];
+      var numStr = withLetter[2];
+      var letter = withLetter[3].toUpperCase();
+      if (letter === "Z") {
+        return incrementTrailingNumber(prefix, numStr) + "A";
+      }
+      return prefix + numStr + String.fromCharCode(letter.charCodeAt(0) + 1);
+    }
+
+    var numericOnly = value.match(/^(.*?)(\d+)$/);
+    if (numericOnly) {
+      return incrementTrailingNumber(numericOnly[1], numericOnly[2]);
+    }
+
+    return "";
+  }
+
+  function deletePart(id) {
+    parts = parts.filter(function (p) { return p.id !== id; });
+    saveParts();
+    render();
+  }
+
+  // Location preview sheet: lists every part at a location, deletes one part
+  // or the whole location (each needs a second tap to confirm).
+  function locationParts() {
+    return parts.filter(function (p) { return p.location.toLowerCase() === locSheetKey; });
+  }
+
+  function openLocSheet(location) {
+    locSheetKey = location.toLowerCase();
+    locSheetConfirming = false;
+    locArmedPartId = null;
+    renderLocSheet();
+    locSheet.classList.remove("hidden");
+  }
+
+  function closeLocSheet() {
+    locSheet.classList.add("hidden");
+    locSheetKey = null;
+    locSheetConfirming = false;
+    locArmedPartId = null;
+  }
+
+  function renderLocSheet() {
+    var list = locationParts();
+    if (list.length === 0) { closeLocSheet(); return; }
+    var n = list.length;
+
+    locSheetTitle.textContent = list[0].location;
+    locSheetCount.textContent = n + " part" + (n === 1 ? "" : "s");
+
+    locSheetParts.innerHTML = list.slice().reverse().map(function (p) {
+      var model = getModelForPartNumber(p.partNumber);
+      var armed = locArmedPartId === p.id;
+      return '<li class="loc-part" data-id="' + p.id + '">' +
+        '<span class="loc-part-no">' + escapeHtml(p.partNumber) + '</span>' +
+        (model ? '<span class="loc-part-model">' + escapeHtml(model) + '</span>' : '') +
+        '<button class="loc-part-del' + (armed ? ' armed' : '') + '" aria-label="Delete part ' + escapeHtml(p.partNumber) + '">' +
+          (armed ? 'Delete?' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3"/></svg>') +
+        '</button></li>';
+    }).join("");
+
+    var warn = "";
+    if (locSheetConfirming) {
+      warn = n === 1
+        ? "Are you sure? This part will be permanently deleted."
+        : "Are you sure? All " + n + " parts at this location will be permanently deleted.";
+    } else if (n > 1) {
+      warn = "Deleting this location removes all " + n + " parts listed here.";
+    }
+    locSheetWarn.textContent = warn;
+    locSheetWarn.classList.toggle("hidden", !warn);
+    locDeleteBtn.textContent = locSheetConfirming ? "Confirm delete" : "Delete location";
+  }
+
+  function renderModelCodesList() {
+    if (modelCodes.length === 0) {
+      modelCodesList.innerHTML = '<li class="empty-state-settings">No model codes yet.</li>';
+      return;
+    }
+    modelCodesList.innerHTML = modelCodes.map(function (m) {
+      if (m.id === editingModelCodeId) {
+        return '<li class="model-code-item editing" data-id="' + m.id + '">' +
+          '<input type="text" class="model-edit-code" value="' + escapeHtml(m.code) + '">' +
+          '<input type="text" class="model-edit-name" value="' + escapeHtml(m.model) + '">' +
+          '<div class="model-code-actions">' +
+            '<button class="save-model-btn" aria-label="Save">✓</button>' +
+            '<button class="cancel-model-btn" aria-label="Cancel">✕</button>' +
+          '</div>' +
+        '</li>';
+      }
+      return '<li class="model-code-item" data-id="' + m.id + '">' +
+        '<span class="model-code-text"><strong>' + escapeHtml(m.code) + '</strong> — ' + escapeHtml(m.model) + '</span>' +
+        '<div class="model-code-actions">' +
+          '<button class="edit-model-btn" aria-label="Edit">✎</button>' +
+          '<button class="delete-model-btn" aria-label="Delete">✕</button>' +
+        '</div>' +
+      '</li>';
+    }).join("");
+  }
+
+  function addModelCode() {
+    var code = modelCodeInput.value.trim();
+    var model = modelNameInput.value.trim();
+    if (!code || !model) {
+      modelCodeError.textContent = "Enter both a code and a model.";
+      return;
+    }
+    if (findModelCodeByCode(code)) {
+      modelCodeError.textContent = "That code already exists — edit it instead.";
+      return;
+    }
+    modelCodeError.textContent = "";
+    modelCodes.push({ id: makeId(), code: code, model: model });
+    saveModelCodes();
+    modelCodeInput.value = "";
+    modelNameInput.value = "";
+    renderModelCodesList();
+    render(); // model column may now resolve for already-saved parts
+  }
+
+  // Splits each pasted line on the FIRST run of separators only (space,
+  // comma, hyphen, colon, tab) — so a hyphen or comma later in the model
+  // name (e.g. "SONET-2000") is left alone, not treated as another split point.
+  function parseBulkModelLines(text) {
+    var lines = text.split(/\r?\n/);
+    var rows = [];
+    var skipped = 0;
+    lines.forEach(function (line) {
+      var trimmed = line.trim();
+      if (!trimmed) return;
+      var m = trimmed.match(/^([A-Za-z0-9]+)[\s,\-:]+(.+)$/);
+      if (!m) {
+        skipped++;
+        return;
+      }
+      var code = m[1].trim();
+      var model = m[2].trim();
+      if (!code || !model) {
+        skipped++;
+        return;
+      }
+      rows.push({ code: code, model: model });
+    });
+    return { rows: rows, skipped: skipped };
+  }
+
+  function updateBulkModelPreview() {
+    var text = bulkModelInput.value;
+    bulkModelStatus.textContent = "";
+    if (!text.trim()) {
+      bulkModelPreview.textContent = "";
+      bulkModelError.textContent = "";
+      currentBulkModelRows = null;
+      addBulkModelBtn.disabled = true;
+      return;
+    }
+    var result = parseBulkModelLines(text);
+    currentBulkModelRows = result.rows;
+    addBulkModelBtn.disabled = result.rows.length === 0;
+    bulkModelError.textContent = "";
+    if (result.rows.length === 0) {
+      bulkModelPreview.textContent = "";
+      bulkModelError.textContent = "No valid \"code, model\" lines found.";
+      return;
+    }
+    var sample = result.rows.slice(0, 3).map(function (r) {
+      return r.code + "→" + r.model;
+    }).join(", ");
+    bulkModelPreview.textContent = result.rows.length + " line" + (result.rows.length === 1 ? "" : "s") +
+      " ready: " + sample + (result.rows.length > 3 ? ", …" : "") +
+      (result.skipped > 0 ? " (" + result.skipped + " line" + (result.skipped === 1 ? "" : "s") + " skipped)" : "");
+  }
+
+  function addBulkModelCodes() {
+    if (!currentBulkModelRows || currentBulkModelRows.length === 0) return;
+    var added = 0;
+    var updated = 0;
+    currentBulkModelRows.forEach(function (row) {
+      var existing = findModelCodeByCode(row.code);
+      if (existing) {
+        existing.model = row.model;
+        updated++;
+      } else {
+        modelCodes.push({ id: makeId(), code: row.code, model: row.model });
+        added++;
+      }
+    });
+    saveModelCodes();
+    renderModelCodesList();
+    render();
+
+    bulkModelInput.value = "";
+    bulkModelPreview.textContent = "";
+    bulkModelError.textContent = "";
+    currentBulkModelRows = null;
+    addBulkModelBtn.disabled = true;
+    bulkModelStatus.textContent = added + " added" + (updated > 0 ? ", " + updated + " updated" : "") + ".";
+  }
+
+  function renderLocationsSettings() {
+    if (locations.length === 0) {
+      locationsList.innerHTML = '<li class="empty-state-settings">No locations yet.</li>';
+      return;
+    }
+
+    // Group by the .group label, preserving the order groups first appear in.
+    var groupOrder = [];
+    var groupMap = {};
+    locations.forEach(function (loc) {
+      var g = loc.group || "Other locations";
+      if (!groupMap[g]) {
+        groupMap[g] = [];
+        groupOrder.push(g);
+      }
+      groupMap[g].push(loc);
+    });
+
+    locationsList.innerHTML = groupOrder.map(function (groupName) {
+      var items = groupMap[groupName];
+      var isOpen = !!openGroups[groupName];
+      return '<li>' +
+        '<details class="location-group" data-group="' + escapeHtml(groupName) + '"' + (isOpen ? " open" : "") + '>' +
+          '<summary>' + escapeHtml(groupName) +
+            '<span class="group-count">(' + items.length + ')</span>' +
+          '</summary>' +
+          '<ul class="group-items">' +
+            items.map(function (loc) {
+              return '<li class="location-item" data-id="' + loc.id + '">' +
+                '<span>' + escapeHtml(loc.value) + '</span>' +
+                '<button class="delete-location-btn" aria-label="Delete location">✕</button>' +
+              '</li>';
+            }).join("") +
+          '</ul>' +
+        '</details>' +
+      '</li>';
+    }).join("");
+  }
+
+  // Finds the contiguous run of digits that differs between two equal-length
+  // codes (e.g. "01" -> "14" in "13A0101[01]A-E" vs "13A0101[14]A-E") and
+  // expands it into every code in that numeric range, zero-padded to match.
+  // start/end are the numeric base codes (e.g. "13A010101" to "13A010114").
+  // letterFrom/letterTo are the separate letter boxes (e.g. "A" to "E"),
+  // expanded as a cartesian product with the numeric range (14 x 5 = 70
+  // codes). Leave both letter boxes blank for a plain numeric range.
+  function computeRangeCodes(start, end, letterFrom, letterTo) {
+    if (!start || !end) {
+      return { error: "Enter both a start and an end code." };
+    }
+    if (start.length !== end.length) {
+      return { error: "Start and end codes must be the same length." };
+    }
+
+    var firstDiff = -1;
+    var lastDiff = -1;
+    for (var i = 0; i < start.length; i++) {
+      if (start[i] !== end[i]) {
+        if (firstDiff === -1) firstDiff = i;
+        lastDiff = i;
+      }
+    }
+
+    if (firstDiff === -1) {
+      return { error: "Start and end codes are identical." };
+    }
+
+    var segStart = start.slice(firstDiff, lastDiff + 1);
+    var segEnd = end.slice(firstDiff, lastDiff + 1);
+
+    if (!/^\d+$/.test(segStart) || !/^\d+$/.test(segEnd)) {
+      return { error: "The part that differs must be numbers, e.g. 01 to 14." };
+    }
+
+    var numStart = parseInt(segStart, 10);
+    var numEnd = parseInt(segEnd, 10);
+    var width = segStart.length;
+
+    if (numEnd < numStart) {
+      return { error: "The end code's number must be the same or higher than the start." };
+    }
+
+    var prefix = start.slice(0, firstDiff);
+    var suffix = start.slice(lastDiff + 1);
+
+    var hasFrom = !!letterFrom;
+    var hasTo = !!letterTo;
+    if (hasFrom !== hasTo) {
+      return { error: "Enter both letter boxes, or leave both blank." };
+    }
+
+    var letters = null;
+    if (hasFrom && hasTo) {
+      if (!/^[A-Za-z]$/.test(letterFrom) || !/^[A-Za-z]$/.test(letterTo)) {
+        return { error: "Letters must be a single A-Z character." };
+      }
+      var c1 = letterFrom.toUpperCase().charCodeAt(0);
+      var c2 = letterTo.toUpperCase().charCodeAt(0);
+      if (c2 < c1) {
+        return { error: "The end letter must come at or after the start letter." };
+      }
+      letters = [];
+      for (var cc = c1; cc <= c2; cc++) {
+        letters.push(String.fromCharCode(cc));
+      }
+    }
+
+    var numericCount = numEnd - numStart + 1;
+    var totalCount = letters ? numericCount * letters.length : numericCount;
+    if (totalCount > MAX_RANGE_SIZE) {
+      return { error: "That range is " + totalCount + " locations — max " + MAX_RANGE_SIZE + " at a time. Narrow it down." };
+    }
+
+    var codes = [];
+    for (var n = numStart; n <= numEnd; n++) {
+      var padded = String(n);
+      while (padded.length < width) padded = "0" + padded;
+      var base = prefix + padded + suffix;
+      if (letters) {
+        letters.forEach(function (L) {
+          codes.push(base + L);
+        });
+      } else {
+        codes.push(base);
+      }
+    }
+    return { codes: codes };
+  }
+
+  function updateRangePreview() {
+    var start = rangeStartInput.value.trim();
+    var end = rangeEndInput.value.trim();
+    var letterFrom = rangeFromLetterStart.value.trim();
+    var letterTo = rangeFromLetterEnd.value.trim();
+    rangeStatus.textContent = "";
+
+    if (!start && !end) {
+      rangePreview.textContent = "";
+      rangeError.textContent = "";
+      currentRangeCodes = null;
+      addRangeBtn.disabled = true;
+      return;
+    }
+
+    var result = computeRangeCodes(start, end, letterFrom, letterTo);
+    if (result.error) {
+      rangePreview.textContent = "";
+      rangeError.textContent = result.error;
+      currentRangeCodes = null;
+      addRangeBtn.disabled = true;
+      return;
+    }
+
+    rangeError.textContent = "";
+    currentRangeCodes = result.codes;
+    addRangeBtn.disabled = false;
+
+    var codes = result.codes;
+    var sample = codes.length <= 4
+      ? codes.join(", ")
+      : codes[0] + ", " + codes[1] + ", … , " + codes[codes.length - 1];
+    rangePreview.textContent = codes.length + " location" + (codes.length === 1 ? "" : "s") + ": " + sample;
+  }
+
+  function addRange() {
+    var start = rangeStartInput.value.trim();
+    var end = rangeEndInput.value.trim();
+    var letterFrom = rangeFromLetterStart.value.trim();
+    var letterTo = rangeFromLetterEnd.value.trim();
+
+    var result = computeRangeCodes(start, end, letterFrom, letterTo);
+    if (result.error || !result.codes) {
+      rangeError.textContent = result.error || "Enter a valid range first.";
+      return;
+    }
+
+    var groupLabel = start + " – " + end + (letterFrom && letterTo ? " (" + letterFrom + "-" + letterTo + ")" : "");
+    var added = 0;
+    var skipped = 0;
+
+    result.codes.forEach(function (code) {
+      if (locationExists(code)) {
+        skipped++;
+        return;
+      }
+      locations.push({ id: makeId(), value: code, group: groupLabel });
+      added++;
+    });
+
+    saveLocations();
+    renderLocationsSettings();
+
+    rangeStartInput.value = "";
+    rangeEndInput.value = "";
+    rangeFromLetterStart.value = "";
+    rangeFromLetterEnd.value = "";
+    rangeToLetterStart.value = "";
+    rangeToLetterEnd.value = "";
+    rangePreview.textContent = "";
+    rangeError.textContent = "";
+    currentRangeCodes = null;
+    addRangeBtn.disabled = true;
+
+    rangeStatus.textContent = added + " location" + (added === 1 ? "" : "s") + " added" +
+      (skipped > 0 ? ", " + skipped + " already existed" : "") + ".";
+  }
+
+  conflictCancelBtn.addEventListener("click", function () {
+    locationConflictOverlay.classList.add("hidden");
+    pendingNewPart = null;
+  });
+
+  conflictAddBtn.addEventListener("click", function () {
+    if (!pendingNewPart) return;
+    finalizeAddPart(pendingNewPart.partNumber, pendingNewPart.location);
+    locationConflictOverlay.classList.add("hidden");
+    pendingNewPart = null;
+  });
+
+  conflictReplaceBtn.addEventListener("click", function () {
+    if (!pendingNewPart) return;
+    var existing = parts.find(function (p) {
+      return p.location.toLowerCase() === pendingNewPart.location.toLowerCase();
+    });
+    if (existing) {
+      existing.partNumber = pendingNewPart.partNumber;
+      saveParts();
+    }
+    resetFormAfterAdd(pendingNewPart.location);
+    locationConflictOverlay.classList.add("hidden");
+    pendingNewPart = null;
+  });
+
+  dupAddCancelBtn.addEventListener("click", function () {
+    dupAddOverlay.classList.add("hidden");
+    pendingDupPart = null;
+  });
+
+  dupAddConfirmBtn.addEventListener("click", function () {
+    dupAddOverlay.classList.add("hidden");
+    if (!pendingDupPart) return;
+    var pending = pendingDupPart;
+    pendingDupPart = null;
+    continueAddPart(pending.partNumber, pending.location);
+  });
+
+  function renderDupView() {
+    var groups = findDuplicates();
+    dupViewList.innerHTML = groups.length === 0
+      ? '<li class="empty-state-settings">No duplicates.</li>'
+      : groups.map(function (g) {
+          return '<li class="dup-item"><div class="dup-top"><span class="dup-part">' + escapeHtml(g.partNumber) + '</span>' +
+            '<span class="dup-count">' + g.locs.length + ' locations</span>' +
+            '<button class="dup-ignore" type="button" data-part="' + escapeHtml(g.partNumber.toLowerCase()) + '">Ignore</button></div>' +
+            '<div class="chip-row">' + chipsHtml(g.locs) + '</div></li>';
+        }).join("");
+    var hiddenCount = findDuplicates(true).length - groups.length;
+    dupRestoreBtn.textContent = "Restore " + hiddenCount + " ignored";
+    dupRestoreBtn.classList.toggle("hidden", hiddenCount === 0);
+  }
+
+  dupAlertBtn.addEventListener("click", function () {
+    renderDupView();
+    dupViewOverlay.classList.remove("hidden");
+  });
+
+  dupViewList.addEventListener("click", function (e) {
+    var btn = e.target.closest(".dup-ignore");
+    if (!btn) return;
+    var key = btn.getAttribute("data-part");
+    if (ignoredDups.indexOf(key) === -1) ignoredDups.push(key);
+    saveIgnoredDups();
+    renderDupView();
+    updateDuplicateAlert();
+  });
+
+  dupRestoreBtn.addEventListener("click", function () {
+    ignoredDups = [];
+    saveIgnoredDups();
+    renderDupView();
+    updateDuplicateAlert();
+  });
+
+  dupViewCloseBtn.addEventListener("click", function () {
+    dupViewOverlay.classList.add("hidden");
+  });
+
+  addBtn.addEventListener("click", addPart);
+
+  locationInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") addPart();
+  });
+
+  locationInput.addEventListener("input", renderLocationSuggestions);
+
+  locationInput.addEventListener("focus", function () {
+    if (locationInput.value.trim()) renderLocationSuggestions();
+  });
+
+  // Delay so a tap on a suggestion still registers before the list hides.
+  locationInput.addEventListener("blur", function () {
+    setTimeout(hideLocationSuggestions, 150);
+  });
+
+  locationSuggestions.addEventListener("click", function (e) {
+    var item = e.target.closest(".suggestion-item");
+    if (!item) return;
+    locationInput.value = item.getAttribute("data-value");
+    hideLocationSuggestions();
+  });
+  partNumberInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") locationInput.focus();
+  });
+
+  searchInput.addEventListener("input", render);
+
+  partsBody.addEventListener("click", function (e) {
+    var row = e.target.closest("tr[data-id]");
+    if (!row) return;
+    var id = row.getAttribute("data-id");
+    var part = parts.find(function (p) { return p.id === id; });
+    if (!part) return;
+    openLocSheet(part.location);
+  });
+
+  locCancelBtn.addEventListener("click", closeLocSheet);
+  locSheet.addEventListener("click", function (e) {
+    if (e.target === locSheet) closeLocSheet();
+  });
+
+  locDeleteBtn.addEventListener("click", function () {
+    if (!locSheetConfirming) {
+      locSheetConfirming = true;
+      locArmedPartId = null;
+      renderLocSheet();
+      return;
+    }
+    var key = locSheetKey;
+    parts = parts.filter(function (p) { return p.location.toLowerCase() !== key; });
+    saveParts();
+    closeLocSheet();
+    render();
+  });
+
+  locSheetParts.addEventListener("click", function (e) {
+    var btn = e.target.closest(".loc-part-del");
+    if (!btn) return;
+    var id = btn.closest(".loc-part").getAttribute("data-id");
+    locSheetConfirming = false;
+    if (locArmedPartId !== id) {
+      locArmedPartId = id;
+      renderLocSheet();
+      return;
+    }
+    locArmedPartId = null;
+    deletePart(id);
+    renderLocSheet();
+  });
+
+  settingsBtn.addEventListener("click", function () {
+    renderLocationsSettings();
+    mainScreen.classList.add("hidden");
+    settingsScreen.classList.remove("hidden");
+  });
+
+  closeSettingsBtn.addEventListener("click", function () {
+    settingsScreen.classList.add("hidden");
+    mainScreen.classList.remove("hidden");
+  });
+
+  locationsList.addEventListener("toggle", function (e) {
+    var details = e.target.closest(".location-group");
+    if (!details) return;
+    var groupName = details.getAttribute("data-group");
+    openGroups[groupName] = details.open;
+  }, true);
+
+  locationsList.addEventListener("click", function (e) {
+    var btn = e.target.closest(".delete-location-btn");
+    if (!btn) return;
+    var li = btn.closest(".location-item");
+    var id = li.getAttribute("data-id");
+    locations = locations.filter(function (l) { return l.id !== id; });
+    saveLocations();
+    renderLocationsSettings();
+  });
+
+  openModelCodesBtn.addEventListener("click", function () {
+    editingModelCodeId = null;
+    modelCodeError.textContent = "";
+    bulkModelError.textContent = "";
+    bulkModelStatus.textContent = "";
+    renderModelCodesList();
+    modelCodesOverlay.classList.remove("hidden");
+  });
+
+  closeModelCodesBtn.addEventListener("click", function () {
+    modelCodesOverlay.classList.add("hidden");
+    editingModelCodeId = null;
+  });
+
+  addModelCodeBtn.addEventListener("click", addModelCode);
+  modelNameInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") addModelCode();
+  });
+
+  bulkModelInput.addEventListener("input", updateBulkModelPreview);
+  addBulkModelBtn.addEventListener("click", addBulkModelCodes);
+
+  modelCodesList.addEventListener("click", function (e) {
+    var li = e.target.closest(".model-code-item");
+    if (!li) return;
+    var id = li.getAttribute("data-id");
+
+    if (e.target.closest(".delete-model-btn")) {
+      modelCodes = modelCodes.filter(function (m) { return m.id !== id; });
+      saveModelCodes();
+      renderModelCodesList();
+      render();
+      return;
+    }
+
+    if (e.target.closest(".edit-model-btn")) {
+      editingModelCodeId = id;
+      renderModelCodesList();
+      return;
+    }
+
+    if (e.target.closest(".cancel-model-btn")) {
+      editingModelCodeId = null;
+      renderModelCodesList();
+      return;
+    }
+
+    if (e.target.closest(".save-model-btn")) {
+      var codeInput = li.querySelector(".model-edit-code");
+      var nameInput = li.querySelector(".model-edit-name");
+      var newCode = codeInput.value.trim();
+      var newModel = nameInput.value.trim();
+      if (!newCode || !newModel) return;
+      var duplicate = modelCodes.find(function (m) {
+        return m.id !== id && m.code.toLowerCase() === newCode.toLowerCase();
+      });
+      if (duplicate) return;
+      var entry = modelCodes.find(function (m) { return m.id === id; });
+      if (entry) {
+        entry.code = newCode;
+        entry.model = newModel;
+        saveModelCodes();
+      }
+      editingModelCodeId = null;
+      renderModelCodesList();
+      render();
+      return;
+    }
+  });
+
+
+  rangeStartInput.addEventListener("input", updateRangePreview);
+  rangeEndInput.addEventListener("input", updateRangePreview);
+
+  // The From and To groups show the same letter range (it applies to the
+  // whole span, not per endpoint) — keep both pairs of boxes in sync so
+  // typing it once in either group fills both, matching the visual spec.
+  rangeFromLetterStart.addEventListener("input", function () {
+    rangeToLetterStart.value = rangeFromLetterStart.value;
+    updateRangePreview();
+  });
+  rangeFromLetterEnd.addEventListener("input", function () {
+    rangeToLetterEnd.value = rangeFromLetterEnd.value;
+    updateRangePreview();
+  });
+  rangeToLetterStart.addEventListener("input", function () {
+    rangeFromLetterStart.value = rangeToLetterStart.value;
+    updateRangePreview();
+  });
+  rangeToLetterEnd.addEventListener("input", function () {
+    rangeFromLetterEnd.value = rangeToLetterEnd.value;
+    updateRangePreview();
+  });
+  addRangeBtn.addEventListener("click", addRange);
+
+  loadParts();
+  loadLocations();
+  loadModelCodes();
+  render();
+})();
+</script>
+
+<script>
+(function () {
+  var K = "partsPickerTheme", root = document.documentElement, t = "auto";
+  function apply(v) {
+    if (v !== "light" && v !== "dark") v = "auto";
+    if (v === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", v);
+    document.querySelectorAll("[data-theme-choice]").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-theme-choice") === v));
+    });
+  }
+  try { t = localStorage.getItem(K) || "auto"; } catch (e) {}
+  apply(t);
+  document.getElementById("themePicker").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-theme-choice]"); if (!b) return;
+    t = b.getAttribute("data-theme-choice");
+    try { localStorage.setItem(K, t); } catch (e2) {}
+    apply(t);
+  });
+})();
+</script>
+<script>
+(function () {
+  function n(key) {
+    try { var v = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(v) ? v.length : 0; }
+    catch (e) { return 0; }
+  }
+  function refresh() {
+    document.getElementById("statParts").textContent = n("partsPickerData");
+    document.getElementById("statLocations").textContent = n("partsPickerLocations");
+    document.getElementById("statModels").textContent = n("partsPickerModelCodes");
+  }
+  var mo = new MutationObserver(refresh);
+  mo.observe(document.getElementById("partsBody"), { childList: true });
+  mo.observe(document.getElementById("mainScreen"), { attributes: true, attributeFilter: ["class"] });
+  refresh();
+})();
+</script>
+</body>
+</html>
