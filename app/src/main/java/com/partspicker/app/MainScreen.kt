@@ -357,8 +357,10 @@ private fun EntryCard(vm: PartsViewModel, partFocus: FocusRequester) {
                 mono = true,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                imeAction = ImeAction.Next,
-                onImeAction = { locFocus.requestFocus() },
+                imeAction = if (vm.locationInput.isNotBlank()) ImeAction.Done else ImeAction.Next,
+                onImeAction = {
+                    if (vm.locationInput.isNotBlank()) vm.addPart() else locFocus.requestFocus()
+                },
                 focusRequester = partFocus
             )
 
