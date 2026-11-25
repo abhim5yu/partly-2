@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -230,6 +231,22 @@ private fun SettingsLabel(text: String, first: Boolean = false) {
     SectionLabel(text, Modifier.padding(start = 22.dp, end = 22.dp, top = if (first) 8.dp else 28.dp, bottom = 10.dp))
 }
 
+/** Small round button with a ⇄ arrow, used to swap the code and model values. */
+@Composable
+private fun SwapButton(onClick: () -> Unit, background: Color, size: Dp = 40.dp) {
+    val c = LocalAppColors.current
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(background)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("⇄", color = c.accent, fontSize = 18.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 /** A card with a tap-to-expand header; body only composes while open. */
 @Composable
 private fun CollapsibleCard(
@@ -409,11 +426,18 @@ private fun ModelCodesSheet(vm: PartsViewModel, onDismiss: () -> Unit) {
             Modifier.fillMaxWidth().clip(Radius).background(c.surface2).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 PillField(
                     value = code, onValueChange = { code = it }, placeholder = "Code e.g. CC",
                     modifier = Modifier.weight(1f), mono = true, fontWeight = FontWeight.Bold,
                     background = c.surface, horizontalPadding = 16.dp, imeAction = ImeAction.Next
+                )
+                SwapButton(
+                    onClick = { val t = code; code = model; model = t },
+                    background = c.surface
                 )
                 PillField(
                     value = model, onValueChange = { model = it }, placeholder = "Model e.g. SONET",
@@ -517,6 +541,11 @@ private fun ModelCodeRow(
                 value = editCode, onValueChange = { editCode = it }, placeholder = "Code",
                 modifier = Modifier.weight(1f), height = 42.dp, mono = true,
                 fontWeight = FontWeight.Bold, horizontalPadding = 16.dp
+            )
+            SwapButton(
+                onClick = { val t = editCode; editCode = editModel; editModel = t },
+                background = c.surface2,
+                size = 36.dp
             )
             PillField(
                 value = editModel, onValueChange = { editModel = it }, placeholder = "Model",
