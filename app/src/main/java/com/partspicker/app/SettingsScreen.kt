@@ -46,7 +46,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun SettingsScreen(vm: PartsViewModel, onBack: () -> Unit) {
+fun SettingsScreen(
+    vm: PartsViewModel,
+    onBack: () -> Unit,
+    onExportBackup: () -> Unit = {},
+    onImportBackup: () -> Unit = {}
+) {
     val c = LocalAppColors.current
     var showModelCodes by remember { mutableStateOf(false) }
     val openGroups = remember { mutableStateMapOf<String, Boolean>() }
@@ -123,6 +128,30 @@ fun SettingsScreen(vm: PartsViewModel, onBack: () -> Unit) {
                             )
                         }
                     }
+                }
+            }
+
+            item { SettingsLabel("Backup & restore") }
+            item {
+                Column(
+                    Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth()
+                        .lift(Radius)
+                        .clip(Radius)
+                        .background(c.surface)
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Save a backup file before reinstalling or updating the app, so your parts and locations are never lost.",
+                        color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PillButton("Export backup", onClick = onExportBackup, modifier = Modifier.weight(1f), container = c.surface2, content = c.text)
+                        PillButton("Restore backup", onClick = onImportBackup, modifier = Modifier.weight(1f))
+                    }
+                    StatusText(vm.backupStatus, c.success)
                 }
             }
 
