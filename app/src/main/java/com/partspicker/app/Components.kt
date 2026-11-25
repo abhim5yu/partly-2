@@ -1,6 +1,12 @@
 package com.partspicker.app
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +39,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +78,20 @@ fun Modifier.lift(shape: Shape, elevation: Dp = 4.dp): Modifier =
         ambientColor = Color(0x203A2C14),
         spotColor = Color(0x303A2C14)
     )
+
+/** Springy "squish" while the element is pressed. */
+fun Modifier.pressScale(source: InteractionSource, pressedScale: Float = 0.94f): Modifier = composed {
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 600f),
+        label = "pressScale"
+    )
+    graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
+}
 
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
@@ -123,13 +147,15 @@ fun PillButton(
     val c = LocalAppColors.current
     val bg = if (enabled) container else c.surface2
     val fg = if (enabled) content else c.muted
+    val source = remember { MutableInteractionSource() }
     Box(
         modifier
+            .pressScale(source)
             .height(height)
             .defaultMinSize(minWidth = 52.dp)
             .clip(PillShape)
             .background(bg)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(interactionSource = source, indication = LocalIndication.current, enabled = enabled, onClick = onClick)
             .padding(horizontal = horizontalPadding),
         contentAlignment = Alignment.Center
     ) {
@@ -147,8 +173,14 @@ fun IconBtn(
     background: Color = Color.Transparent,
     size: Dp = 40.dp
 ) {
+    val source = remember { MutableInteractionSource() }
     Box(
-        modifier.size(size).clip(CircleShape).background(background).clickable(onClick = onClick),
+        modifier
+            .pressScale(source, 0.86f)
+            .size(size)
+            .clip(CircleShape)
+            .background(background)
+            .clickable(interactionSource = source, indication = LocalIndication.current, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = desc, tint = tint, modifier = Modifier.size(18.dp))
@@ -194,6 +226,7 @@ fun PillField(
     singleLine: Boolean = true,
     minLines: Int = 1,
     lettersOnly: Boolean = false,
+    uppercase: Boolean = true,
     centered: Boolean = false,
     imeAction: ImeAction = ImeAction.Default,
     onImeAction: (() -> Unit)? = null,
@@ -215,7 +248,7 @@ fun PillField(
         onValueChange = { raw ->
             var v = raw
             if (lettersOnly) v = v.filter { ch -> ch in 'a'..'z' || ch in 'A'..'Z' }
-            onValueChange(v.uppercase())
+            onValueChange(if (uppercase) v.uppercase() else v)
         },
         modifier = mod,
         singleLine = singleLine,
@@ -229,7 +262,7 @@ fun PillField(
         ),
         cursorBrush = SolidColor(c.accent),
         keyboardOptions = KeyboardOptions(
-            capitalization = KeyboardCapitalization.Characters,
+            capitalization = if (uppercase) KeyboardCapitalization.Characters else KeyboardCapitalization.Sentences,
             imeAction = imeAction
         ),
         keyboardActions = KeyboardActions(
