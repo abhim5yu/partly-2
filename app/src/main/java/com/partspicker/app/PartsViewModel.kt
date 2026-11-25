@@ -7,15 +7,23 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class PartsViewModel(app: Application) : AndroidViewModel(app) {
     private val storage = Storage(app)
+
+    val currentVersion: String = UpdateChecker.installedVersion(app)
 
     var parts by mutableStateOf<List<Part>>(emptyList()); private set
     var locations by mutableStateOf<List<LocationItem>>(emptyList()); private set
     var modelCodes by mutableStateOf<List<ModelCode>>(emptyList()); private set
     var ignoredDups by mutableStateOf<List<String>>(emptyList()); private set
     var themeMode by mutableStateOf(ThemeMode.AUTO); private set
+    var updateState by mutableStateOf<UpdateState>(UpdateState.Idle); private set
+    var notifyUpdates by mutableStateOf(true); private set
 
     var searchQuery by mutableStateOf("")
     var partNumberInput by mutableStateOf("")
@@ -45,6 +53,30 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         modelCodes = storage.loadModelCodes()
         ignoredDups = storage.loadIgnored()
         themeMode = storage.loadTheme()
+        notifyUpdates = storage.loadNotifyUpdates()
+        checkForUpdates(silent = true)
+    }
+
+    /** silent = background check on launch: only shows a result if an update exists. */
+    fun checkForUpdates(silent: Boolean = false) {
+        if (updateState is UpdateState.Checking) return
+        if (!silent) updateState = UpdateState.Checking
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { UpdateChecker.check(getApplication<Application>()) }
+            updateState = if (silent && result !is UpdateState.Available) UpdateState.Idle else result
+        }
+    }
+
+    fun setNotifyUpdates(enabled: Boolean) {
+        notifyUpdates = enabled
+        storage.saveNotifyUpdates(enabled)
+    }
+
+    fun updatePartDetails(id: String, name: String, variant: String, notes: String) {
+        parts = parts.map {
+            if (it.id == id) it.copy(name = name.trim(), variant = variant.trim(), notes = notes.trim()) else it
+        }
+        storage.saveParts(parts)
     }
 
     fun setTheme(mode: ThemeMode) {
@@ -128,7 +160,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         pendingConflict = null
         val existing = parts.firstOrNull { it.location.equals(p.location, true) }
         if (existing != null) {
-            parts = parts.map { if (it.id == existing.id) it.copy(partNumber = p.partNumber) else it }
+            parts = parts.map { if (it.id == existing.id) it.copy(partNumber = p.partNumber, name = "", variant = "", notes = "") else it }
             storage.saveParts(parts)
         }
         resetFormAfterAdd(p.location)
@@ -254,6 +286,17 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             backupStatus = "Backup saved."
         } catch (e: Exception) {
             backupStatus = "Export failed: ${e.message}"
+        }
+    }
+
+    fun exportExcel(uri: Uri) {
+        try {
+            getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                ExcelExport.write(out, parts, modelCodes)
+            }
+            backupStatus = "Excel file saved."
+        } catch (e: Exception) {
+            backupStatus = "Excel export failed: ${e.message}"
         }
     }
 
