@@ -1,6 +1,7 @@
 package com.partspicker.app
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +29,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var locSheetKey by mutableStateOf<String?>(null); private set
     var locSheetConfirming by mutableStateOf(false); private set
     var locArmedPartId by mutableStateOf<String?>(null); private set
+    var backupStatus by mutableStateOf("")
 
     init {
         parts = storage.loadParts() ?: emptyList()
@@ -242,5 +244,32 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteLocation(id: String) {
         locations = locations.filter { it.id != id }
         storage.saveLocations(locations)
+    }
+
+    fun exportBackup(uri: Uri) {
+        try {
+            getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(storage.exportBundle().toByteArray())
+            }
+            backupStatus = "Backup saved."
+        } catch (e: Exception) {
+            backupStatus = "Export failed: ${e.message}"
+        }
+    }
+
+    fun importBackup(uri: Uri) {
+        try {
+            val text = getApplication<Application>().contentResolver.openInputStream(uri)
+                ?.bufferedReader()?.use { it.readText() } ?: return
+            storage.importBundle(text)
+            parts = storage.loadParts() ?: emptyList()
+            locations = storage.loadLocations() ?: emptyList()
+            modelCodes = storage.loadModelCodes()
+            ignoredDups = storage.loadIgnored()
+            themeMode = storage.loadTheme()
+            backupStatus = "Backup restored."
+        } catch (e: Exception) {
+            backupStatus = "Restore failed: ${e.message}"
+        }
     }
 }
