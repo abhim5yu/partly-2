@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -350,23 +351,34 @@ private fun EntryCard(vm: PartsViewModel, partFocus: FocusRequester) {
         ) {
             SectionLabel("New entry", Modifier.padding(horizontal = 4.dp))
 
-            PillField(
-                value = vm.partNumberInput,
-                onValueChange = { vm.partNumberInput = it },
-                placeholder = "Part number",
-                modifier = Modifier.fillMaxWidth(),
-                height = 58.dp,
-                mono = true,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                imeAction = if (vm.locationInput.isNotBlank()) ImeAction.Done else ImeAction.Next,
-                onImeAction = {
-                    if (vm.locationInput.isNotBlank()) vm.addPart() else locFocus.requestFocus()
-                },
-                focusRequester = partFocus
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillField(
+                    value = vm.partNumberInput,
+                    onValueChange = { vm.partNumberInput = it },
+                    placeholder = "Part number",
+                    modifier = Modifier.weight(1f),
+                    height = 58.dp,
+                    mono = true,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    imeAction = if (vm.locationInput.isNotBlank()) ImeAction.Done else ImeAction.Next,
+                    onImeAction = {
+                        if (vm.locationInput.isNotBlank()) vm.addPart() else locFocus.requestFocus()
+                    },
+                    focusRequester = partFocus
+                )
+                PillButton("Add part", onClick = { vm.addPart() })
+            }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                IconBtn(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    desc = "Previous location",
+                    onClick = { vm.stepLocationPrev() },
+                    tint = c.muted,
+                    background = c.surface2,
+                    size = 52.dp
+                )
                 PillField(
                     value = vm.locationInput,
                     onValueChange = { vm.locationInput = it; dismissed = false },
@@ -385,7 +397,14 @@ private fun EntryCard(vm: PartsViewModel, partFocus: FocusRequester) {
                     background = if (vm.locationLocked) c.accent else c.surface2,
                     size = 52.dp
                 )
-                PillButton("Add part", onClick = { vm.addPart() })
+                IconBtn(
+                    icon = Icons.AutoMirrored.Filled.ArrowForward,
+                    desc = "Next location",
+                    onClick = { vm.stepLocationNext() },
+                    tint = c.muted,
+                    background = c.surface2,
+                    size = 52.dp
+                )
             }
 
             StatusText(vm.formError, c.error)
