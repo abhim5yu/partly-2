@@ -27,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
@@ -374,6 +376,14 @@ private fun EntryCard(vm: PartsViewModel, partFocus: FocusRequester) {
                     onImeAction = { vm.addPart() },
                     focusRequester = locFocus,
                     onFocusChange = { locFocused = it }
+                )
+                IconBtn(
+                    icon = if (vm.locationLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    desc = if (vm.locationLocked) "Location locked — stays after adding" else "Location unlocked — advances after adding",
+                    onClick = { vm.locationLocked = !vm.locationLocked },
+                    tint = if (vm.locationLocked) c.onAccent else c.muted,
+                    background = if (vm.locationLocked) c.accent else c.surface2,
+                    size = 52.dp
                 )
                 PillButton("Add part", onClick = { vm.addPart() })
             }
