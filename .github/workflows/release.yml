@@ -9,15 +9,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.9
+
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$GITHUB_WORKSPACE/partly.jks"
+
+      - name: Check keystore
+        env:
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          ls -l "$GITHUB_WORKSPACE/partly.jks"
+          keytool -list -keystore "$GITHUB_WORKSPACE/partly.jks" -storepass "$KS_PASS" -alias "$KS_ALIAS"
+
       - name: Build
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/partly.jks
@@ -25,6 +37,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle assembleRelease
+
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
