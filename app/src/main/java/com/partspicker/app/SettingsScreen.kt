@@ -55,6 +55,8 @@ fun SettingsScreen(
     val c = LocalAppColors.current
     var showModelCodes by remember { mutableStateOf(false) }
     val openGroups = remember { mutableStateMapOf<String, Boolean>() }
+    var rangeOpen by remember { mutableStateOf(false) }
+    var backupOpen by remember { mutableStateOf(false) }
 
     var start by remember { mutableStateOf("") }
     var end by remember { mutableStateOf("") }
@@ -131,30 +133,6 @@ fun SettingsScreen(
                 }
             }
 
-            item { SettingsLabel("Backup & restore") }
-            item {
-                Column(
-                    Modifier
-                        .padding(horizontal = 16.dp)
-                        .fillMaxWidth()
-                        .lift(Radius)
-                        .clip(Radius)
-                        .background(c.surface)
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        "Save a backup file before reinstalling or updating the app, so your parts and locations are never lost.",
-                        color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PillButton("Export backup", onClick = onExportBackup, modifier = Modifier.weight(1f), container = c.surface2, content = c.text)
-                        PillButton("Restore backup", onClick = onImportBackup, modifier = Modifier.weight(1f))
-                    }
-                    StatusText(vm.backupStatus, c.success)
-                }
-            }
-
             item { SettingsLabel("Part number decoding") }
             item {
                 Row(
@@ -177,16 +155,7 @@ fun SettingsScreen(
 
             item { SettingsLabel("Add a range") }
             item {
-                Column(
-                    Modifier
-                        .padding(horizontal = 16.dp)
-                        .fillMaxWidth()
-                        .lift(RadiusXl)
-                        .clip(RadiusXl)
-                        .background(c.surface)
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                CollapsibleCard(title = "Add a location range", open = rangeOpen, onToggle = { rangeOpen = !rangeOpen }) {
                     RangeGroup("From", "13A010101", start, { start = it; rangeStatus = "" }, letterA, { letterA = it; rangeStatus = "" }, letterB, { letterB = it; rangeStatus = "" })
                     RangeGroup("To", "13A010114", end, { end = it; rangeStatus = "" }, letterA, { letterA = it; rangeStatus = "" }, letterB, { letterB = it; rangeStatus = "" })
 
@@ -228,6 +197,21 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            item { SettingsLabel("Backup & restore") }
+            item {
+                CollapsibleCard(title = "Export or restore a backup", open = backupOpen, onToggle = { backupOpen = !backupOpen }) {
+                    Text(
+                        "Save a backup file before reinstalling or updating the app, so your parts and locations are never lost.",
+                        color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PillButton("Export backup", onClick = onExportBackup, modifier = Modifier.weight(1f), container = c.surface2, content = c.text)
+                        PillButton("Restore backup", onClick = onImportBackup, modifier = Modifier.weight(1f))
+                    }
+                    StatusText(vm.backupStatus, c.success)
+                }
+            }
         }
 
         Dock(
@@ -244,6 +228,54 @@ fun SettingsScreen(
 @Composable
 private fun SettingsLabel(text: String, first: Boolean = false) {
     SectionLabel(text, Modifier.padding(start = 22.dp, end = 22.dp, top = if (first) 8.dp else 28.dp, bottom = 10.dp))
+}
+
+/** A card with a tap-to-expand header; body only composes while open. */
+@Composable
+private fun CollapsibleCard(
+    title: String,
+    open: Boolean,
+    onToggle: () -> Unit,
+    body: @Composable () -> Unit
+) {
+    val c = LocalAppColors.current
+    Column(
+        Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth()
+            .lift(RadiusXl)
+            .clip(RadiusXl)
+            .background(c.surface)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(title, color = c.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+            Box(
+                Modifier.size(26.dp).clip(CircleShape).background(if (open) c.accent else c.surface2),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (open) "–" else "+",
+                    color = if (open) c.onAccent else c.muted,
+                    fontSize = 16.sp, lineHeight = 16.sp
+                )
+            }
+        }
+        if (open) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                body()
+            }
+        }
+    }
 }
 
 @Composable
