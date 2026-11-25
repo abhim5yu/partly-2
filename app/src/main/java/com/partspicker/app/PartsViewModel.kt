@@ -20,6 +20,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var searchQuery by mutableStateOf("")
     var partNumberInput by mutableStateOf("")
     var locationInput by mutableStateOf("")
+    var locationLocked by mutableStateOf(false)
     var formError by mutableStateOf("")
     var focusPartTick by mutableIntStateOf(0); private set
 
@@ -103,7 +104,9 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun resetFormAfterAdd(loc: String) {
         partNumberInput = ""
-        locationInput = suggestNextLocation(loc)
+        // When the location is locked, keep it as-is so multiple parts can be
+        // added to the same location in a row without retyping it.
+        locationInput = if (locationLocked) loc else suggestNextLocation(loc)
         focusPartTick++
     }
 
