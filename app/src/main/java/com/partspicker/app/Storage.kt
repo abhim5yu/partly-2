@@ -24,11 +24,15 @@ class Storage(context: Context) {
     }
 
     fun loadParts(): List<Part>? = readArray(KEY_PARTS) {
-        Part(it.getString("id"), it.getString("partNumber"), it.getString("location"))
+        Part(
+            it.getString("id"), it.getString("partNumber"), it.getString("location"),
+            it.optString("name", ""), it.optString("variant", ""), it.optString("notes", "")
+        )
     }
 
     fun saveParts(list: List<Part>) = writeArray(KEY_PARTS, list.map {
         JSONObject().put("id", it.id).put("partNumber", it.partNumber).put("location", it.location)
+            .put("name", it.name).put("variant", it.variant).put("notes", it.notes)
     })
 
     fun loadLocations(): List<LocationItem>? = readArray(KEY_LOCATIONS) {
@@ -68,6 +72,18 @@ class Storage(context: Context) {
         prefs.edit().putString(KEY_THEME, mode.name).apply()
     }
 
+    fun loadNotifyUpdates(): Boolean = prefs.getBoolean(KEY_NOTIFY_UPDATES, true)
+
+    fun saveNotifyUpdates(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFY_UPDATES, enabled).apply()
+    }
+
+    fun loadLastNotifiedVersion(): String? = prefs.getString(KEY_LAST_NOTIFIED, null)
+
+    fun saveLastNotifiedVersion(version: String) {
+        prefs.edit().putString(KEY_LAST_NOTIFIED, version).apply()
+    }
+
     /** Bundles every raw pref string as-is into one JSON file — survives reinstalls. */
     fun exportBundle(): String {
         val obj = JSONObject()
@@ -93,5 +109,7 @@ class Storage(context: Context) {
         const val KEY_MODELS = "partsPickerModelCodes"
         const val KEY_IGNORED = "partsPickerIgnoredDuplicates"
         const val KEY_THEME = "partsPickerTheme"
+        const val KEY_NOTIFY_UPDATES = "partsPickerNotifyUpdates"
+        const val KEY_LAST_NOTIFIED = "partsPickerLastNotifiedVersion"
     }
 }
