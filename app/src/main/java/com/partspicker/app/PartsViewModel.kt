@@ -75,7 +75,10 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun continueAdd(pn: String, loc: String) {
         val existing = parts.firstOrNull { it.location.equals(loc, true) }
-        if (existing != null) {
+        // When the location is locked, the user is deliberately adding several parts
+        // to the same location in a row — skip the "already has a part here" prompt
+        // and just add it straight away instead of asking every time.
+        if (existing != null && !locationLocked) {
             pendingConflict = PendingConflict(pn, loc, existing.partNumber)
             return
         }
