@@ -12,8 +12,9 @@ android {
         applicationId = "com.partspicker.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        // CI sets VERSION_CODE / VERSION_NAME on every release build; these are local-build fallbacks.
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 2
+        versionName = System.getenv("VERSION_NAME") ?: "1.1"
     }
 
     signingConfigs {
