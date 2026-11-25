@@ -48,15 +48,18 @@ val LightColors = AppColors(
     scrim = Color(0x80171510)
 )
 
+// Raised vs. the original near-black values — bg/surface/surface2 were too
+// close in luminance to read as separate layers (and caused banding/dither
+// on low-brightness OLED screens). Each step is now a clearly visible jump.
 val DarkColors = AppColors(
-    bg = Color(0xFF11100E),
-    surface = Color(0xFF1B1916),
-    surface2 = Color(0xFF282521),
+    bg = Color(0xFF141311),
+    surface = Color(0xFF252019),
+    surface2 = Color(0xFF362F24),
     ink = Color(0xFFF2EEE6),
     onInk = Color(0xFF15130F),
     text = Color(0xFFF2EEE6),
-    muted = Color(0xFF9A9385),
-    line = Color(0xFF2B2824),
+    muted = Color(0xFFAFA696),
+    line = Color(0xFF4A4134),
     accent = Color(0xFFFF6F4A),
     onAccent = Color(0xFF1A0D08),
     error = Color(0xFFFF8A77),
