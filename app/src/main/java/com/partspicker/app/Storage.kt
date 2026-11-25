@@ -68,7 +68,26 @@ class Storage(context: Context) {
         prefs.edit().putString(KEY_THEME, mode.name).apply()
     }
 
-    private companion object {
+    /** Bundles every raw pref string as-is into one JSON file — survives reinstalls. */
+    fun exportBundle(): String {
+        val obj = JSONObject()
+        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_IGNORED, KEY_THEME).forEach { key ->
+            val raw = prefs.getString(key, null)
+            if (raw != null) obj.put(key, raw)
+        }
+        return obj.toString(2)
+    }
+
+    fun importBundle(json: String) {
+        val obj = JSONObject(json)
+        val editor = prefs.edit()
+        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_IGNORED, KEY_THEME).forEach { key ->
+            if (obj.has(key) && !obj.isNull(key)) editor.putString(key, obj.getString(key))
+        }
+        editor.apply()
+    }
+
+    companion object {
         const val KEY_PARTS = "partsPickerData"
         const val KEY_LOCATIONS = "partsPickerLocations"
         const val KEY_MODELS = "partsPickerModelCodes"
