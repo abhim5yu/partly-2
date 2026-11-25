@@ -210,6 +210,17 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         storage.saveIgnored(ignoredDups)
     }
 
+    /**
+     * Resolves a duplicate group: keeps [partNumber] only at [keepLocation] and removes
+     * every other entry of that same part number from all its other locations.
+     */
+    fun resolveDuplicateToLocation(partNumber: String, keepLocation: String) {
+        val pnLower = partNumber.lowercase()
+        val keepLower = keepLocation.lowercase()
+        parts = parts.filter { !(it.partNumber.lowercase() == pnLower && it.location.lowercase() != keepLower) }
+        storage.saveParts(parts)
+    }
+
     fun addModelCode(code: String, model: String): String? {
         val c = code.trim()
         val m = model.trim()
