@@ -66,7 +66,10 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             .filter { it.partNumber.equals(pn, true) && !it.location.equals(loc, true) }
             .map { it.location }
             .distinctBy { it.lowercase() }
-        if (elsewhere.isNotEmpty()) {
+        // When the location is locked, don't interrupt with "this part is already
+        // elsewhere, add it here too?" either — just add it straight away, same as
+        // the existing-part-at-this-location prompt below.
+        if (elsewhere.isNotEmpty() && !locationLocked) {
             pendingDup = PendingDup(pn, loc, elsewhere)
             return
         }
