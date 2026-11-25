@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -122,7 +124,17 @@ private fun DupViewSheet(vm: PartsViewModel) {
                             height = 38.dp, fontSize = 13.sp, horizontalPadding = 16.dp
                         )
                     }
-                    ChipRow(g.locations, Modifier.padding(top = 12.dp))
+                    Text(
+                        "Tap the location to keep — it'll be removed from the rest.",
+                        Modifier.padding(top = 10.dp),
+                        color = c.muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    DuplicateLocationChips(
+                        partNumber = g.partNumber,
+                        locations = g.locations,
+                        vm = vm,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
             }
         }
@@ -133,6 +145,36 @@ private fun DupViewSheet(vm: PartsViewModel) {
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 container = Color.Transparent, content = c.muted,
                 height = 44.dp, fontSize = 14.sp
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DuplicateLocationChips(
+    partNumber: String,
+    locations: List<String>,
+    vm: PartsViewModel,
+    modifier: Modifier = Modifier
+) {
+    val c = LocalAppColors.current
+    FlowRow(
+        modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        locations.forEach { loc ->
+            Text(
+                loc,
+                Modifier
+                    .clip(PillShape)
+                    .background(c.surface2)
+                    .clickable { vm.resolveDuplicateToLocation(partNumber, loc) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                color = c.text,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
             )
         }
     }
