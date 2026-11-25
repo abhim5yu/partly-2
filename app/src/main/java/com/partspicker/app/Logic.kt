@@ -18,6 +18,14 @@ object PartsLogic {
         return prefix + next
     }
 
+    private fun decrementTrailingNumber(prefix: String, numStr: String): String? {
+        val width = numStr.length
+        val current = BigInteger(numStr)
+        if (current <= BigInteger.ZERO) return null
+        val next = (current - BigInteger.ONE).toString().padStart(width, '0')
+        return prefix + next
+    }
+
     fun nextLocationAfter(value: String): String {
         if (value.isEmpty()) return ""
 
@@ -38,6 +46,34 @@ object PartsLogic {
             return incrementTrailingNumber(numericOnly.groupValues[1], numericOnly.groupValues[2])
         }
         return ""
+    }
+
+    /**
+     * Mirror of [nextLocationAfter]: steps a location code back by one.
+     * If the trailing number would go below zero, the value is returned unchanged
+     * (there's nothing earlier to step back to).
+     */
+    fun prevLocationBefore(value: String): String {
+        if (value.isEmpty()) return ""
+
+        val withLetter = Regex("^(.*?)(\\d+)([A-Za-z])$").matchEntire(value)
+        if (withLetter != null) {
+            val prefix = withLetter.groupValues[1]
+            val numStr = withLetter.groupValues[2]
+            val letter = withLetter.groupValues[3].uppercase()[0]
+            return if (letter == 'A') {
+                val dec = decrementTrailingNumber(prefix, numStr) ?: return value
+                dec + "Z"
+            } else {
+                prefix + numStr + (letter.code - 1).toChar()
+            }
+        }
+
+        val numericOnly = Regex("^(.*?)(\\d+)$").matchEntire(value)
+        if (numericOnly != null) {
+            return decrementTrailingNumber(numericOnly.groupValues[1], numericOnly.groupValues[2]) ?: value
+        }
+        return value
     }
 
     fun computeRangeCodes(start: String, end: String, letterFrom: String, letterTo: String): RangeResult {
