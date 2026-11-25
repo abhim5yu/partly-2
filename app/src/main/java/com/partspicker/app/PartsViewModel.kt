@@ -102,6 +102,29 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         return PartsLogic.nextLocationAfter(current)
     }
 
+    /** Mirror of [suggestNextLocation], stepping back instead of forward. */
+    private fun suggestPrevLocation(current: String): String {
+        val idx = locations.indexOfFirst { it.value.equals(current, ignoreCase = true) }
+        if (idx > 0) {
+            locations.getOrNull(idx - 1)?.let { return it.value }
+        }
+        return PartsLogic.prevLocationBefore(current)
+    }
+
+    /** Manually step the Location field forward, via the arrow button — doesn't add a part. */
+    fun stepLocationNext() {
+        val cur = locationInput.trim()
+        if (cur.isEmpty()) return
+        locationInput = suggestNextLocation(cur)
+    }
+
+    /** Manually step the Location field back, via the arrow button — doesn't add a part. */
+    fun stepLocationPrev() {
+        val cur = locationInput.trim()
+        if (cur.isEmpty()) return
+        locationInput = suggestPrevLocation(cur)
+    }
+
     private fun resetFormAfterAdd(loc: String) {
         partNumberInput = ""
         // When the location is locked, keep it as-is so multiple parts can be
