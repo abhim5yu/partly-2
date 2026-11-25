@@ -1,7 +1,13 @@
 package com.partspicker.app
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +50,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -54,7 +63,12 @@ private data class ListRow(val part: Part, val extra: Int)
 private fun buildRows(parts: List<Part>, query: String): Pair<List<ListRow>, Boolean> {
     val q = query.trim().lowercase()
     val filtered = parts.filter {
-        q.isEmpty() || it.partNumber.lowercase().contains(q) || it.location.lowercase().contains(q)
+        q.isEmpty() ||
+            it.partNumber.lowercase().contains(q) ||
+            it.location.lowercase().contains(q) ||
+            it.name.lowercase().contains(q) ||
+            it.variant.lowercase().contains(q) ||
+            it.notes.lowercase().contains(q)
     }.asReversed()
 
     if (q.isNotEmpty()) return filtered.map { ListRow(it, 0) } to false
@@ -82,6 +96,7 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
     val dupCount = remember(vm.parts, vm.ignoredDups) {
         PartsLogic.findDuplicates(vm.parts, vm.ignoredDups).size
     }
+    val context = LocalContext.current
     val partFocus = remember { FocusRequester() }
     LaunchedEffect(vm.focusPartTick) {
         if (vm.focusPartTick > 0) {
@@ -121,6 +136,14 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
                 }
             }
 
+            (vm.updateState as? UpdateState.Available)?.let { available ->
+                item(key = "update-alert") {
+                    UpdateAlert(available.release.version) {
+                        openUrl(context, available.release.apkUrl ?: available.release.pageUrl)
+                    }
+                }
+            }
+
             if (dupCount > 0) {
                 item { DupAlert(dupCount) { vm.showDupView = true } }
             }
@@ -132,7 +155,7 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
                     PillField(
                         value = vm.searchQuery,
                         onValueChange = { vm.searchQuery = it },
-                        placeholder = "Search part number or location",
+                        placeholder = "Search part, name, variant or location",
                         modifier = Modifier.fillMaxWidth().lift(PillShape, 3.dp),
                         height = 58.dp,
                         fontSize = 17.sp,
@@ -177,6 +200,7 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
 
             itemsIndexed(rows, key = { _, r -> r.part.id }) { index, r ->
                 PartRow(
+                    modifier = Modifier.animateItem(),
                     row = r,
                     model = PartsLogic.modelFor(r.part.partNumber, vm.modelCodes),
                     showBadge = grouped,
@@ -210,26 +234,61 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
 @Composable
 fun Dock(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalAppColors.current
+    val source = remember { MutableInteractionSource() }
+    // Fully transparent pill: no fill, no shadow — just a thin outline so it still reads as a button.
     Box(
         modifier
             .navigationBarsPadding()
             .padding(bottom = 18.dp)
-            .lift(PillShape, 12.dp)
+            .pressScale(source)
             .clip(PillShape)
-            .background(c.ink)
+            .border(1.dp, c.text.copy(alpha = 0.3f), PillShape)
             .padding(6.dp)
     ) {
         Row(
             Modifier
                 .clip(PillShape)
-                .clickable(onClick = onClick)
+                .clickable(interactionSource = source, indication = LocalIndication.current, onClick = onClick)
                 .height(48.dp)
                 .padding(start = 18.dp, end = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(icon, contentDescription = null, tint = c.onInk, modifier = Modifier.size(20.dp))
-            Text(label, color = c.onInk, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Icon(icon, contentDescription = null, tint = c.text, modifier = Modifier.size(20.dp))
+            Text(label, color = c.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+    }
+}
+
+@Composable
+private fun UpdateAlert(version: String, onClick: () -> Unit) {
+    val c = LocalAppColors.current
+    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .lift(Radius)
+                .clip(Radius)
+                .background(c.surface)
+                .clickable(onClick = onClick)
+                .padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).background(c.success),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("↑", color = c.bg, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Update available", color = c.text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "Version $version — tap to download",
+                    color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = c.muted, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -270,9 +329,21 @@ private fun DupAlert(count: Int, onClick: () -> Unit) {
     }
 }
 
+/** Counts up from 0 on first show, then animates between values whenever they change. */
+@Composable
+private fun animatedCount(value: Int): Int {
+    var target by remember { mutableIntStateOf(0) }
+    LaunchedEffect(value) { target = value }
+    val shown by animateIntAsState(target, animationSpec = tween(700), label = "count")
+    return shown
+}
+
 @Composable
 private fun Bento(parts: Int, locations: Int, models: Int) {
     val c = LocalAppColors.current
+    val partsShown = animatedCount(parts)
+    val locationsShown = animatedCount(locations)
+    val modelsShown = animatedCount(models)
     Row(
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp).height(172.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -289,7 +360,7 @@ private fun Bento(parts: Int, locations: Int, models: Int) {
         ) {
             Text("Parts on file", color = c.onInk.copy(alpha = 0.65f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                parts.toString(),
+                partsShown.toString(),
                 color = c.onInk,
                 fontSize = 84.sp,
                 lineHeight = 84.sp,
@@ -299,8 +370,8 @@ private fun Bento(parts: Int, locations: Int, models: Int) {
             )
         }
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SmallTile(locations.toString(), "Locations", c.surface, true, Modifier.weight(1f))
-            SmallTile(models.toString(), "Model codes", c.surface2, false, Modifier.weight(1f))
+            SmallTile(locationsShown.toString(), "Locations", c.surface, true, Modifier.weight(1f))
+            SmallTile(modelsShown.toString(), "Model codes", c.surface2, false, Modifier.weight(1f))
         }
     }
 }
@@ -343,6 +414,7 @@ private fun EntryCard(vm: PartsViewModel, partFocus: FocusRequester) {
                 .lift(RadiusXl)
                 .clip(RadiusXl)
                 .background(c.surface)
+                .animateContentSize()
                 .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -441,34 +513,54 @@ private fun TableHeader() {
 }
 
 @Composable
-private fun PartRow(row: ListRow, model: String, showBadge: Boolean, showDivider: Boolean, onClick: () -> Unit) {
+private fun PartRow(
+    row: ListRow,
+    model: String,
+    showBadge: Boolean,
+    showDivider: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val c = LocalAppColors.current
-    Box(Modifier.padding(horizontal = 16.dp)) {
+    Box(modifier.padding(horizontal = 16.dp)) {
         Column(Modifier.fillMaxWidth().background(c.surface).clickable(onClick = onClick)) {
             Row(
                 Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(Modifier.weight(W_PART), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        row.part.partNumber,
-                        Modifier.weight(1f, fill = false),
-                        color = c.text,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                    if (showBadge && row.extra > 0) {
+                Column(Modifier.weight(W_PART).padding(end = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "+${row.extra}",
-                            Modifier
-                                .padding(start = 8.dp)
-                                .clip(PillShape)
-                                .background(c.surface2)
-                                .padding(horizontal = 9.dp, vertical = 4.dp),
-                            color = c.accent,
+                            row.part.partNumber,
+                            Modifier.weight(1f, fill = false),
+                            color = c.text,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        if (showBadge && row.extra > 0) {
+                            Text(
+                                "+${row.extra}",
+                                Modifier
+                                    .padding(start = 8.dp)
+                                    .clip(PillShape)
+                                    .background(c.surface2)
+                                    .padding(horizontal = 9.dp, vertical = 4.dp),
+                                color = c.accent,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                    if (row.part.name.isNotBlank()) {
+                        Text(
+                            row.part.name,
+                            Modifier.padding(top = 2.dp),
+                            color = c.muted,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -479,14 +571,26 @@ private fun PartRow(row: ListRow, model: String, showBadge: Boolean, showDivider
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp
                 )
-                Text(
-                    if (model.isNotEmpty()) model else "—",
-                    Modifier.weight(W_MODEL),
-                    color = c.muted,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp
-                )
+                Column(Modifier.weight(W_MODEL)) {
+                    Text(
+                        if (model.isNotEmpty()) model else "—",
+                        color = c.muted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
+                    )
+                    if (row.part.variant.isNotBlank()) {
+                        Text(
+                            row.part.variant,
+                            Modifier.padding(top = 2.dp),
+                            color = c.muted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
             if (showDivider) HorizontalDivider(color = c.line)
         }
