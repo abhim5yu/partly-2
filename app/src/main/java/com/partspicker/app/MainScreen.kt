@@ -124,12 +124,6 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
                 }
             }
 
-            if (dupCount > 0) {
-                item { DupAlert(dupCount) { vm.showDupView = true } }
-            }
-
-            item { Bento(vm.parts.size, vm.locations.size, vm.modelCodes.size) }
-
             stickyHeader {
                 Box(Modifier.fillMaxWidth().background(c.bg).padding(horizontal = 16.dp, vertical = 12.dp)) {
                     PillField(
@@ -145,6 +139,12 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
                         }
                     )
                 }
+            }
+
+            item { Bento(vm.parts.size, vm.locations.size, vm.modelCodes.size) }
+
+            if (dupCount > 0) {
+                item { DupAlert(dupCount) { vm.showDupView = true } }
             }
 
             item { EntryCard(vm, partFocus) }
@@ -240,7 +240,7 @@ fun Dock(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifi
 @Composable
 private fun DupAlert(count: Int, onClick: () -> Unit) {
     val c = LocalAppColors.current
-    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp)) {
+    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -390,19 +390,19 @@ private fun EntryCard(vm: PartsViewModel, partFocus: FocusRequester) {
                     onFocusChange = { locFocused = it }
                 )
                 IconBtn(
-                    icon = if (vm.locationLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                    desc = if (vm.locationLocked) "Location locked — stays after adding" else "Location unlocked — advances after adding",
-                    onClick = { vm.locationLocked = !vm.locationLocked },
-                    tint = if (vm.locationLocked) c.onAccent else c.muted,
-                    background = if (vm.locationLocked) c.accent else c.surface2,
-                    size = 52.dp
-                )
-                IconBtn(
                     icon = Icons.AutoMirrored.Filled.ArrowForward,
                     desc = "Next location",
                     onClick = { vm.stepLocationNext() },
                     tint = c.muted,
                     background = c.surface2,
+                    size = 52.dp
+                )
+                IconBtn(
+                    icon = if (vm.locationLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    desc = if (vm.locationLocked) "Location locked — stays after adding" else "Location unlocked — advances after adding",
+                    onClick = { vm.locationLocked = !vm.locationLocked },
+                    tint = if (vm.locationLocked) c.onAccent else c.muted,
+                    background = if (vm.locationLocked) c.accent else c.surface2,
                     size = 52.dp
                 )
             }
