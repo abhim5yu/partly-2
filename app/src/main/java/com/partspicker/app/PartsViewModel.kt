@@ -23,6 +23,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var parts by mutableStateOf<List<Part>>(emptyList()); private set
     var locations by mutableStateOf<List<LocationItem>>(emptyList()); private set
     var modelCodes by mutableStateOf<List<ModelCode>>(emptyList()); private set
+    var sheetLinks by mutableStateOf<List<SheetLink>>(emptyList()); private set
     var ignoredDups by mutableStateOf<List<String>>(emptyList()); private set
     var themeMode by mutableStateOf(ThemeMode.AUTO); private set
 
@@ -40,6 +41,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var locSheetConfirming by mutableStateOf(false); private set
     var locArmedPartId by mutableStateOf<String?>(null); private set
     var editingPartId by mutableStateOf<String?>(null)
+    var sheetError by mutableStateOf("")
     var backupStatus by mutableStateOf("")
 
     var updateInfo by mutableStateOf<UpdateInfo?>(null); private set
@@ -57,6 +59,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             derived
         }
         modelCodes = storage.loadModelCodes()
+        sheetLinks = storage.loadSheetLinks()
         ignoredDups = storage.loadIgnored()
         themeMode = storage.loadTheme()
     }
@@ -100,6 +103,44 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun dismissUpdateBanner() { updateInfo = null }
+
+    /** A sensible default name for the next sheet link: "Sheet1", "Sheet2", ... */
+    fun suggestNextSheetName(): String {
+        var n = sheetLinks.size + 1
+        val used = sheetLinks.map { it.name.lowercase() }.toHashSet()
+        while ("sheet$n".lowercase() in used) n++
+        return "Sheet$n"
+    }
+
+    fun addSheetLink(name: String, url: String): Boolean {
+        val n = name.trim().ifEmpty { suggestNextSheetName() }
+        val u = url.trim()
+        if (u.isEmpty()) {
+            sheetError = "Paste a Google Sheets link."
+            return false
+        }
+        if (!u.startsWith("http://") && !u.startsWith("https://")) {
+            sheetError = "That doesn't look like a valid link."
+            return false
+        }
+        sheetError = ""
+        sheetLinks = sheetLinks + SheetLink(PartsLogic.makeId(), n, u)
+        storage.saveSheetLinks(sheetLinks)
+        return true
+    }
+
+    fun updateSheetLink(id: String, name: String, url: String) {
+        val n = name.trim()
+        val u = url.trim()
+        if (n.isEmpty() || u.isEmpty()) return
+        sheetLinks = sheetLinks.map { if (it.id == id) it.copy(name = n, url = u) else it }
+        storage.saveSheetLinks(sheetLinks)
+    }
+
+    fun deleteSheetLink(id: String) {
+        sheetLinks = sheetLinks.filter { it.id != id }
+        storage.saveSheetLinks(sheetLinks)
+    }
 
     fun addPart() {
         val pn = partNumberInput.trim()
@@ -378,6 +419,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             parts = storage.loadParts() ?: emptyList()
             locations = storage.loadLocations() ?: emptyList()
             modelCodes = storage.loadModelCodes()
+            sheetLinks = storage.loadSheetLinks()
             ignoredDups = storage.loadIgnored()
             themeMode = storage.loadTheme()
             backupStatus = "Backup restored."
