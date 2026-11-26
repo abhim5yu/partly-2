@@ -7,6 +7,15 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+
+data class UpdateInfo(val version: String, val url: String)
 
 class PartsViewModel(app: Application) : AndroidViewModel(app) {
     private val storage = Storage(app)
@@ -33,6 +42,9 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var editingPartId by mutableStateOf<String?>(null)
     var backupStatus by mutableStateOf("")
 
+    var updateInfo by mutableStateOf<UpdateInfo?>(null); private set
+    private var updateCheckStarted = false
+
     init {
         parts = storage.loadParts() ?: emptyList()
 
@@ -53,6 +65,41 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         themeMode = mode
         storage.saveTheme(mode)
     }
+
+    /**
+     * Checks the GitHub "latest release" API once per app session and, if its tag
+     * differs from the currently installed version, surfaces an update banner.
+     * Fails silently (no network, rate-limited, etc.) — this is a nice-to-have, not
+     * something that should ever interrupt using the app.
+     */
+    fun checkForUpdate(currentVersion: String) {
+        if (updateCheckStarted) return
+        updateCheckStarted = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val url = URL("https://api.github.com/repos/abhim5yu/partly-2/releases/latest")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("Accept", "application/vnd.github+json")
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                conn.disconnect()
+                val obj = JSONObject(body)
+                val tag = obj.optString("tag_name", "").removePrefix("v").removePrefix("V")
+                val htmlUrl = obj.optString("html_url", "https://github.com/abhim5yu/partly-2/releases")
+                if (tag.isNotEmpty() && tag != currentVersion) {
+                    withContext(Dispatchers.Main) {
+                        updateInfo = UpdateInfo(tag, htmlUrl)
+                    }
+                }
+            } catch (_: Exception) {
+                // No connectivity, rate-limited, or no releases yet — just skip it.
+            }
+        }
+    }
+
+    fun dismissUpdateBanner() { updateInfo = null }
 
     fun addPart() {
         val pn = partNumberInput.trim()
