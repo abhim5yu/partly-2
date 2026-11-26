@@ -30,6 +30,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var locSheetKey by mutableStateOf<String?>(null); private set
     var locSheetConfirming by mutableStateOf(false); private set
     var locArmedPartId by mutableStateOf<String?>(null); private set
+    var editingPartId by mutableStateOf<String?>(null)
     var backupStatus by mutableStateOf("")
 
     init {
@@ -170,12 +171,14 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         locSheetKey = location.lowercase()
         locSheetConfirming = false
         locArmedPartId = null
+        editingPartId = null
     }
 
     fun closeLocSheet() {
         locSheetKey = null
         locSheetConfirming = false
         locArmedPartId = null
+        editingPartId = null
     }
 
     fun onLocDeleteTap() {
@@ -199,6 +202,26 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         locArmedPartId = null
         parts = parts.filter { it.id != id }
         storage.saveParts(parts)
+    }
+
+    /** Toggles inline-edit mode for a part row inside the Location sheet. */
+    fun startEditingPart(id: String) {
+        locArmedPartId = null
+        editingPartId = if (editingPartId == id) null else id
+    }
+
+    fun stopEditingPart() { editingPartId = null }
+
+    /** Saves edits made to a part (part number, location, variant) from the Location sheet. */
+    fun updatePart(id: String, partNumber: String, location: String, variant: String) {
+        val pn = partNumber.trim()
+        val loc = location.trim()
+        if (pn.isEmpty() || loc.isEmpty()) return
+        parts = parts.map { if (it.id == id) it.copy(partNumber = pn, location = loc, variant = variant.trim()) else it }
+        storage.saveParts(parts)
+        editingPartId = null
+        // If the part moved to a different location, the sheet should now reflect that.
+        locSheetKey = loc.lowercase()
     }
 
     fun ignoreDuplicate(key: String) {
