@@ -76,6 +76,43 @@ object PartsLogic {
         return value
     }
 
+    /**
+     * Natural / alphanumeric comparison for location codes, so "13A0101" < "13A0102" <
+     * "13A0201" < "13A102" sorts by the numeric value of each digit run rather than as
+     * plain text (which would otherwise put "13A102" before "13A0201").
+     */
+    fun naturalCompare(a: String, b: String): Int {
+        val ta = Regex("\\d+|\\D+").findAll(a).map { it.value }.toList()
+        val tb = Regex("\\d+|\\D+").findAll(b).map { it.value }.toList()
+        val n = minOf(ta.size, tb.size)
+        for (i in 0 until n) {
+            val x = ta[i]
+            val y = tb[i]
+            val cmp = if (x[0].isDigit() && y[0].isDigit()) {
+                val bx = x.trimStart('0').ifEmpty { "0" }
+                val by = y.trimStart('0').ifEmpty { "0" }
+                if (bx.length != by.length) bx.length - by.length else bx.compareTo(by)
+            } else {
+                x.compareTo(y, ignoreCase = true)
+            }
+            if (cmp != 0) return cmp
+        }
+        return ta.size - tb.size
+    }
+
+    val naturalOrder: Comparator<String> = Comparator { a, b -> naturalCompare(a, b) }
+
+    /**
+     * Groups a location like "13A0101" under the section "13A" — the leading
+     * digits+letter chunk — so the home list can show 13A / 13B / 13C style sections.
+     */
+    fun sectionKeyOf(location: String): String {
+        val up = location.uppercase()
+        val m = Regex("^([0-9]*[A-Za-z]+|[0-9]+)").find(up)
+        val key = m?.value ?: up
+        return if (key.isEmpty()) up else key
+    }
+
     fun computeRangeCodes(start: String, end: String, letterFrom: String, letterTo: String): RangeResult {
         if (start.isEmpty() || end.isEmpty()) return RangeResult(error = "Enter both a start and an end code.")
         if (start.length != end.length) return RangeResult(error = "Start and end codes must be the same length.")
