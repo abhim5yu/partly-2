@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -112,7 +113,12 @@ private fun buildRows(parts: List<Part>, locations: List<LocationItem>, query: S
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () -> Unit) {
+fun MainScreen(
+    vm: PartsViewModel,
+    listState: LazyListState,
+    onOpenSheets: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
     val c = LocalAppColors.current
     val context = LocalContext.current
     val (rows, grouped) = remember(vm.parts, vm.locations, vm.searchQuery) { buildRows(vm.parts, vm.locations, vm.searchQuery) }
@@ -254,10 +260,9 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
             }
         }
 
-        Dock(
-            label = "Settings",
-            icon = Icons.Filled.Settings,
-            onClick = onOpenSettings,
+        NavDock(
+            onSheets = onOpenSheets,
+            onSettings = onOpenSettings,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
@@ -311,6 +316,26 @@ private fun SectionHeaderRow(sectionKey: String) {
     }
 }
 
+/** Floating bottom nav: exactly two buttons — Sheets and Settings. */
+@Composable
+fun NavDock(onSheets: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+    val c = LocalAppColors.current
+    Box(
+        modifier
+            .navigationBarsPadding()
+            .padding(bottom = 18.dp)
+            .lift(PillShape, 12.dp)
+            .clip(PillShape)
+            .background(c.ink)
+            .padding(6.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            DockButton("Sheets", Icons.Filled.TableChart, onSheets)
+            DockButton("Settings", Icons.Filled.Settings, onSettings)
+        }
+    }
+}
+
 @Composable
 fun Dock(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalAppColors.current
@@ -323,18 +348,24 @@ fun Dock(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifi
             .background(c.ink)
             .padding(6.dp)
     ) {
-        Row(
-            Modifier
-                .clip(PillShape)
-                .clickable(onClick = onClick)
-                .height(48.dp)
-                .padding(start = 18.dp, end = 22.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Icon(icon, contentDescription = null, tint = c.onInk, modifier = Modifier.size(20.dp))
-            Text(label, color = c.onInk, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        }
+        DockButton(label, icon, onClick)
+    }
+}
+
+@Composable
+private fun DockButton(label: String, icon: ImageVector, onClick: () -> Unit) {
+    val c = LocalAppColors.current
+    Row(
+        Modifier
+            .clip(PillShape)
+            .clickable(onClick = onClick)
+            .height(48.dp)
+            .padding(start = 18.dp, end = 22.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = c.onInk, modifier = Modifier.size(20.dp))
+        Text(label, color = c.onInk, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }
 

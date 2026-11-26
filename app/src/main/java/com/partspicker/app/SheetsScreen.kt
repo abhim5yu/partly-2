@@ -1,12 +1,15 @@
 package com.partspicker.app
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,10 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,11 +37,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Sheets section: a list of external Google Sheets used for stock taking (Sheet1,
- * Sheet2, ...), kept separate from the main parts list since there's more data in
- * Sheets than this app holds. Each entry just links out to its Google Sheet for now —
- * live read/write sync needs a Google OAuth client, which has to be created in Google
- * Cloud Console first.
+ * Sheets section (opened from the Sheets button in the dock): a plain list of the
+ * Google Sheets used for stock taking, shown by name only (Sheet1, Sheet2, ...).
+ * Individual sheets are never added to the dock — the dock only has Sheets and Settings.
+ * Tapping a sheet opens it (in the Google Sheets app if installed) so stock can be
+ * updated there; the pencil edits the name/link and also holds the delete button.
  */
 @Composable
 fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
@@ -52,7 +52,7 @@ fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize().background(c.bg).statusBarsPadding()) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 10.dp, end = 22.dp, top = 10.dp, bottom = 6.dp),
+            Modifier.fillMaxWidth().padding(start = 10.dp, end = 22.dp, top = 10.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack, tint = c.text)
@@ -67,19 +67,11 @@ fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
 
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
+            contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            item {
-                Text(
-                    "Links to your Google Sheets — there's more stock data in Sheets than this app holds, so keep taking stock there and just jump in from here.",
-                    Modifier.padding(start = 22.dp, end = 22.dp, top = 4.dp, bottom = 16.dp),
-                    color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp
-                )
-            }
-
             if (vm.sheetLinks.isEmpty()) {
                 item {
-                    Box(Modifier.padding(horizontal = 16.dp)) {
+                    Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Box(
                             Modifier.fillMaxWidth().clip(Radius).background(c.surface).padding(vertical = 40.dp),
                             contentAlignment = Alignment.Center
@@ -97,14 +89,20 @@ fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
                             initialName = sheet.name,
                             initialUrl = sheet.url,
                             onCancel = { editingId = null },
-                            onSave = { n, u -> vm.updateSheetLink(sheet.id, n, u); editingId = null }
+                            onSave = { n, u -> vm.updateSheetLink(sheet.id, n, u); editingId = null },
+                            onDelete = { vm.deleteSheetLink(sheet.id); editingId = null }
                         )
                     } else {
                         SheetCard(
-                            sheet = sheet,
-                            onOpen = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(sheet.url))) },
-                            onEdit = { editingId = sheet.id },
-                            onDelete = { vm.deleteSheetLink(sheet.id) }
+                            name = sheet.name,
+                            onOpen = {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(sheet.url)))
+                                } catch (_: ActivityNotFoundException) {
+                                    Toast.makeText(context, "Couldn't open that link.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onEdit = { editingId = sheet.id }
                         )
                     }
                 }
@@ -112,23 +110,23 @@ fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
 
             item {
                 Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)) {
-                    if (showAdd) {
-                        EditSheetCard(
-                            initialName = vm.suggestNextSheetName(),
-                            initialUrl = "",
-                            onCancel = { showAdd = false; vm.sheetError = "" },
-                            onSave = { n, u -> if (vm.addSheetLink(n, u)) showAdd = false }
-                        )
-                    } else {
-                        PillButton(
-                            "+ Add sheet",
-                            onClick = { showAdd = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            container = c.surface2, content = c.text
-                        )
-                    }
-                    if (showAdd) {
-                        StatusText(vm.sheetError, c.error, Modifier.padding(top = 8.dp))
+                    Column {
+                        if (showAdd) {
+                            EditSheetCard(
+                                initialName = vm.suggestNextSheetName(),
+                                initialUrl = "",
+                                onCancel = { showAdd = false; vm.sheetError = "" },
+                                onSave = { n, u -> if (vm.addSheetLink(n, u)) showAdd = false }
+                            )
+                            StatusText(vm.sheetError, c.error, Modifier.padding(top = 8.dp))
+                        } else {
+                            PillButton(
+                                "+ Add sheet",
+                                onClick = { showAdd = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                container = c.surface2, content = c.text
+                            )
+                        }
                     }
                 }
             }
@@ -138,8 +136,9 @@ fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
     }
 }
 
+/** One row in the Sheets list: just the sheet's name. Tap to open; pencil to edit. */
 @Composable
-private fun SheetCard(sheet: SheetLink, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun SheetCard(name: String, onOpen: () -> Unit, onEdit: () -> Unit) {
     val c = LocalAppColors.current
     Row(
         Modifier
@@ -148,20 +147,16 @@ private fun SheetCard(sheet: SheetLink, onOpen: () -> Unit, onEdit: () -> Unit, 
             .clip(Radius)
             .background(c.surface)
             .clickable(onClick = onOpen)
-            .padding(start = 18.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+            .padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f).padding(vertical = 10.dp)) {
-            Text(sheet.name, color = c.text, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
-            Text(
-                sheet.url,
-                color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                maxLines = 1
-            )
-        }
-        IconBtn(Icons.AutoMirrored.Filled.OpenInNew, "Open ${sheet.name}", onOpen, tint = c.accent, background = c.surface2, size = 40.dp)
-        IconBtn(Icons.Filled.Edit, "Edit ${sheet.name}", onEdit, tint = c.muted, background = c.surface2, size = 40.dp)
-        IconBtn(Icons.Filled.Delete, "Delete ${sheet.name}", onDelete, tint = c.muted, size = 40.dp)
+        Text(
+            name,
+            Modifier.weight(1f).padding(vertical = 14.dp),
+            color = c.text, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
+            maxLines = 1
+        )
+        IconBtn(Icons.Filled.Edit, "Edit $name", onEdit, tint = c.muted, background = c.surface2, size = 40.dp)
     }
 }
 
@@ -170,11 +165,13 @@ private fun EditSheetCard(
     initialName: String,
     initialUrl: String,
     onCancel: () -> Unit,
-    onSave: (String, String) -> Unit
+    onSave: (String, String) -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
     val c = LocalAppColors.current
     var name by remember { mutableStateOf(initialName) }
     var url by remember { mutableStateOf(initialUrl) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -202,6 +199,14 @@ private fun EditSheetCard(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PillButton("Cancel", onCancel, Modifier.weight(1f), container = c.surface2, content = c.text)
             PillButton("Save", { onSave(name, url) }, Modifier.weight(1f))
+        }
+        if (onDelete != null) {
+            PillButton(
+                if (confirmDelete) "Tap again to delete" else "Delete sheet",
+                { if (confirmDelete) onDelete() else confirmDelete = true },
+                Modifier.fillMaxWidth(),
+                container = c.surface2, content = c.error
+            )
         }
     }
 }

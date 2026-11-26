@@ -49,14 +49,23 @@ fun PartsPickerApp(
 ) {
     AppTheme(vm.themeMode) {
         var showSettings by rememberSaveable { mutableStateOf(false) }
+        var showSheets by rememberSaveable { mutableStateOf(false) }
         val listState = rememberLazyListState()
 
-        BackHandler(enabled = showSettings) { showSettings = false }
+        BackHandler(enabled = showSettings || showSheets) {
+            showSettings = false
+            showSheets = false
+        }
 
-        if (showSettings) {
-            SettingsScreen(vm, onBack = { showSettings = false }, onExportBackup, onImportBackup)
-        } else {
-            MainScreen(vm, listState, onOpenSettings = { showSettings = true })
+        when {
+            showSettings -> SettingsScreen(vm, onBack = { showSettings = false }, onExportBackup, onImportBackup)
+            showSheets -> SheetsScreen(vm, onBack = { showSheets = false })
+            else -> MainScreen(
+                vm,
+                listState,
+                onOpenSheets = { showSheets = true },
+                onOpenSettings = { showSettings = true }
+            )
         }
 
         AppSheets(vm)
