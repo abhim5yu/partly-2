@@ -56,6 +56,15 @@ class Storage(context: Context) {
         JSONObject().put("id", it.id).put("code", it.code).put("model", it.model)
     })
 
+    /** Links to external Google Sheets used for stock taking — "Sheet1", "Sheet2", etc. */
+    fun loadSheetLinks(): List<SheetLink> = readArray(KEY_SHEETS) {
+        SheetLink(it.getString("id"), it.getString("name"), it.getString("url"))
+    } ?: emptyList()
+
+    fun saveSheetLinks(list: List<SheetLink>) = writeArray(KEY_SHEETS, list.map {
+        JSONObject().put("id", it.id).put("name", it.name).put("url", it.url)
+    })
+
     fun loadIgnored(): List<String> {
         val raw = prefs.getString(KEY_IGNORED, null) ?: return emptyList()
         return try {
@@ -80,7 +89,7 @@ class Storage(context: Context) {
     /** Bundles every raw pref string as-is into one JSON file — survives reinstalls. */
     fun exportBundle(): String {
         val obj = JSONObject()
-        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_IGNORED, KEY_THEME).forEach { key ->
+        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME).forEach { key ->
             val raw = prefs.getString(key, null)
             if (raw != null) obj.put(key, raw)
         }
@@ -90,7 +99,7 @@ class Storage(context: Context) {
     fun importBundle(json: String) {
         val obj = JSONObject(json)
         val editor = prefs.edit()
-        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_IGNORED, KEY_THEME).forEach { key ->
+        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME).forEach { key ->
             if (obj.has(key) && !obj.isNull(key)) editor.putString(key, obj.getString(key))
         }
         editor.apply()
@@ -100,6 +109,7 @@ class Storage(context: Context) {
         const val KEY_PARTS = "partsPickerData"
         const val KEY_LOCATIONS = "partsPickerLocations"
         const val KEY_MODELS = "partsPickerModelCodes"
+        const val KEY_SHEETS = "partsPickerSheetLinks"
         const val KEY_IGNORED = "partsPickerIgnoredDuplicates"
         const val KEY_THEME = "partsPickerTheme"
     }
