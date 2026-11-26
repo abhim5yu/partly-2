@@ -194,6 +194,10 @@ fun PillField(
     singleLine: Boolean = true,
     minLines: Int = 1,
     lettersOnly: Boolean = false,
+    // Location/part-number codes want the existing force-to-uppercase behavior;
+    // free text like names, notes, or URLs must NOT be uppercased (this would
+    // corrupt a pasted link, since URL paths are case-sensitive).
+    forceUppercase: Boolean = true,
     centered: Boolean = false,
     imeAction: ImeAction = ImeAction.Default,
     onImeAction: (() -> Unit)? = null,
@@ -215,7 +219,7 @@ fun PillField(
         onValueChange = { raw ->
             var v = raw
             if (lettersOnly) v = v.filter { ch -> ch in 'a'..'z' || ch in 'A'..'Z' }
-            onValueChange(v.uppercase())
+            onValueChange(if (forceUppercase) v.uppercase() else v)
         },
         modifier = mod,
         singleLine = singleLine,
@@ -229,7 +233,7 @@ fun PillField(
         ),
         cursorBrush = SolidColor(c.accent),
         keyboardOptions = KeyboardOptions(
-            capitalization = KeyboardCapitalization.Characters,
+            capitalization = if (forceUppercase) KeyboardCapitalization.Characters else KeyboardCapitalization.None,
             imeAction = imeAction
         ),
         keyboardActions = KeyboardActions(
