@@ -26,7 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,7 +111,7 @@ fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
             }
 
             item {
-                Box(Modifier.padding(horizontal = 16.dp, top = 10.dp)) {
+                Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)) {
                     if (showAdd) {
                         EditSheetCard(
                             initialName = vm.suggestNextSheetName(),
