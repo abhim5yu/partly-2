@@ -24,11 +24,20 @@ class Storage(context: Context) {
     }
 
     fun loadParts(): List<Part>? = readArray(KEY_PARTS) {
-        Part(it.getString("id"), it.getString("partNumber"), it.getString("location"))
+        Part(
+            it.getString("id"),
+            it.getString("partNumber"),
+            it.getString("location"),
+            it.optString("variant", "")
+        )
     }
 
     fun saveParts(list: List<Part>) = writeArray(KEY_PARTS, list.map {
-        JSONObject().put("id", it.id).put("partNumber", it.partNumber).put("location", it.location)
+        JSONObject()
+            .put("id", it.id)
+            .put("partNumber", it.partNumber)
+            .put("location", it.location)
+            .put("variant", it.variant)
     })
 
     fun loadLocations(): List<LocationItem>? = readArray(KEY_LOCATIONS) {
