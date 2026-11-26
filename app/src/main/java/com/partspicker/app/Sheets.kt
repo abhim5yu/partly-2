@@ -18,10 +18,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -185,15 +190,17 @@ private fun LocationSheet(vm: PartsViewModel) {
     val c = LocalAppColors.current
     val key = vm.locSheetKey ?: return
     val list = vm.parts.filter { it.location.lowercase() == key }
-    if (list.isEmpty()) {
+    val locItem = vm.locations.firstOrNull { it.value.lowercase() == key }
+    if (list.isEmpty() && locItem == null) {
         LaunchedEffect(Unit) { vm.closeLocSheet() }
         return
     }
+    val displayName = list.firstOrNull()?.location ?: locItem?.value ?: key
     val n = list.size
     val confirming = vm.locSheetConfirming
     val warn = when {
         confirming && n == 1 -> "Are you sure? This part will be permanently deleted."
-        confirming -> "Are you sure? All $n parts at this location will be permanently deleted."
+        confirming && n > 1 -> "Are you sure? All $n parts at this location will be permanently deleted."
         n > 1 -> "Deleting this location removes all $n parts listed here."
         else -> ""
     }
@@ -202,66 +209,87 @@ private fun LocationSheet(vm: PartsViewModel) {
         Column(Modifier.padding(start = 6.dp, end = 6.dp, bottom = 14.dp)) {
             Eyebrow("Location", Modifier.padding(bottom = 6.dp))
             Text(
-                list[0].location,
+                displayName,
                 color = c.text, fontSize = 30.sp, lineHeight = 32.sp,
                 fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp
             )
             Text(
-                "$n part${if (n == 1) "" else "s"}",
+                if (n > 0) "$n part${if (n == 1) "" else "s"}" else "Empty",
                 Modifier.padding(top = 10.dp).clip(PillShape).background(c.surface2).padding(horizontal = 12.dp, vertical = 5.dp),
                 color = c.text, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold
             )
         }
 
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = 320.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            list.asReversed().forEach { p ->
-                val armed = vm.locArmedPartId == p.id
-                val model = PartsLogic.modelFor(p.partNumber, vm.modelCodes)
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 56.dp)
-                        .lift(Radius, 3.dp)
-                        .clip(Radius)
-                        .background(c.surface)
-                        .padding(start = 18.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        p.partNumber,
-                        Modifier.weight(1f),
-                        color = c.text, fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.ExtraBold, fontSize = 16.sp
-                    )
-                    if (model.isNotEmpty()) {
-                        Text(model, color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-                    }
-                    Row(
-                        Modifier
-                            .heightIn(min = 44.dp)
-                            .widthIn(min = 44.dp)
-                            .clip(PillShape)
-                            .background(if (armed) c.error else Color.Transparent)
-                            .clickable { vm.onLocPartDeleteTap(p.id) }
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (armed) {
-                            Text("Delete?", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        } else {
-                            Icon(Icons.Filled.Delete, "Delete part ${p.partNumber}", tint = c.muted, modifier = Modifier.size(20.dp))
+        if (n > 0) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                list.asReversed().forEach { p ->
+                    if (vm.editingPartId == p.id) {
+                        EditPartRow(vm, p)
+                    } else {
+                        val armed = vm.locArmedPartId == p.id
+                        val model = PartsLogic.modelFor(p.partNumber, vm.modelCodes)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
+                                .lift(Radius, 3.dp)
+                                .clip(Radius)
+                                .background(c.surface)
+                                .padding(start = 18.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    p.partNumber,
+                                    color = c.text, fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.ExtraBold, fontSize = 16.sp
+                                )
+                                if (p.variant.isNotEmpty()) {
+                                    Text(p.variant, color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            if (model.isNotEmpty()) {
+                                Text(model, color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            }
+                            IconBtn(
+                                Icons.Filled.Edit, "Edit part ${p.partNumber}",
+                                onClick = { vm.startEditingPart(p.id) },
+                                tint = c.muted, background = c.surface2, size = 40.dp
+                            )
+                            Row(
+                                Modifier
+                                    .heightIn(min = 40.dp)
+                                    .widthIn(min = 40.dp)
+                                    .clip(PillShape)
+                                    .background(if (armed) c.error else Color.Transparent)
+                                    .clickable { vm.onLocPartDeleteTap(p.id) }
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (armed) {
+                                    Text("Delete?", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(Icons.Filled.Delete, "Delete part ${p.partNumber}", tint = c.muted, modifier = Modifier.size(20.dp))
+                                }
+                            }
                         }
                     }
                 }
             }
+        } else {
+            Text(
+                "No parts saved at this location yet.",
+                Modifier.padding(bottom = 16.dp),
+                color = c.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium
+            )
         }
 
         if (warn.isNotEmpty()) {
@@ -279,12 +307,68 @@ private fun LocationSheet(vm: PartsViewModel) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PillButton("Cancel", vm::closeLocSheet, Modifier.weight(1f), container = c.surface2, content = c.text)
-            PillButton(
-                if (confirming) "Confirm delete" else "Delete location",
-                vm::onLocDeleteTap,
-                Modifier.weight(1.4f),
-                container = c.error, content = Color.White
+            if (n > 0) {
+                PillButton(
+                    if (confirming) "Confirm delete" else "Delete location",
+                    vm::onLocDeleteTap,
+                    Modifier.weight(1.4f),
+                    container = c.error, content = Color.White
+                )
+            } else {
+                PillButton(
+                    "Delete location",
+                    onClick = {
+                        locItem?.let { vm.deleteLocation(it.id) }
+                        vm.closeLocSheet()
+                    },
+                    modifier = Modifier.weight(1.4f),
+                    container = c.error, content = Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditPartRow(vm: PartsViewModel, p: Part) {
+    val c = LocalAppColors.current
+    var pn by remember(p.id) { mutableStateOf(p.partNumber) }
+    var loc by remember(p.id) { mutableStateOf(p.location) }
+    var variant by remember(p.id) { mutableStateOf(p.variant) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .lift(Radius, 3.dp)
+            .clip(Radius)
+            .background(c.surface2)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PillField(
+            value = pn,
+            onValueChange = { pn = it },
+            placeholder = "Part number",
+            modifier = Modifier.fillMaxWidth(),
+            mono = true
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillField(
+                value = loc,
+                onValueChange = { loc = it },
+                placeholder = "Location",
+                modifier = Modifier.weight(1f)
             )
+            PillField(
+                value = variant,
+                onValueChange = { variant = it },
+                placeholder = "Variant",
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton("Cancel", onClick = vm::stopEditingPart, modifier = Modifier.weight(1f), container = c.surface, content = c.text)
+            PillButton("Save", onClick = { vm.updatePart(p.id, pn, loc, variant) }, modifier = Modifier.weight(1f))
         }
     }
 }
