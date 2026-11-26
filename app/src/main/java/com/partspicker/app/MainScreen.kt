@@ -48,19 +48,40 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private data class ListRow(val part: Part, val extra: Int)
+/**
+ * A row in the home table. Either a real saved part (isEmpty = false, partId set),
+ * or a saved Location that has no parts in it yet (isEmpty = true, partId null).
+ */
+private data class ListRow(
+    val partId: String?,
+    val partNumber: String,
+    val variant: String,
+    val location: String,
+    val extra: Int,
+    val isEmpty: Boolean
+)
 
-private fun buildRows(parts: List<Part>, query: String): Pair<List<ListRow>, Boolean> {
+private fun buildRows(parts: List<Part>, locations: List<LocationItem>, query: String): Pair<List<ListRow>, Boolean> {
     val q = query.trim().lowercase()
     val filtered = parts.filter {
         q.isEmpty() || it.partNumber.lowercase().contains(q) || it.location.lowercase().contains(q)
     }.asReversed()
 
-    if (q.isNotEmpty()) return filtered.map { ListRow(it, 0) } to false
+    val usedLower = parts.map { it.location.lowercase() }.toHashSet()
+    val emptyRows = locations
+        .filter { it.value.lowercase() !in usedLower }
+        .filter { q.isEmpty() || it.value.lowercase().contains(q) }
+        .map { ListRow(null, "", "", it.value, 0, true) }
+
+    if (q.isNotEmpty()) {
+        val partRows = filtered.map { ListRow(it.id, it.partNumber, it.variant, it.location, 0, false) }
+        return (partRows + emptyRows) to false
+    }
 
     val counts = HashMap<String, Int>()
     val firsts = ArrayList<Part>()
@@ -74,14 +95,15 @@ private fun buildRows(parts: List<Part>, query: String): Pair<List<ListRow>, Boo
             counts[k] = n + 1
         }
     }
-    return firsts.map { ListRow(it, counts[it.location.lowercase()] ?: 0) } to true
+    val partRows = firsts.map { ListRow(it.id, it.partNumber, it.variant, it.location, counts[it.location.lowercase()] ?: 0, false) }
+    return (partRows + emptyRows) to true
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () -> Unit) {
     val c = LocalAppColors.current
-    val (rows, grouped) = remember(vm.parts, vm.searchQuery) { buildRows(vm.parts, vm.searchQuery) }
+    val (rows, grouped) = remember(vm.parts, vm.locations, vm.searchQuery) { buildRows(vm.parts, vm.locations, vm.searchQuery) }
     val dupCount = remember(vm.parts, vm.ignoredDups) {
         PartsLogic.findDuplicates(vm.parts, vm.ignoredDups).size
     }
@@ -93,7 +115,7 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
     }
 
     val countLabel = when {
-        vm.parts.isEmpty() -> ""
+        rows.isEmpty() -> ""
         grouped -> "${rows.size} location${if (rows.size == 1) "" else "s"} · ${vm.parts.size} part${if (vm.parts.size == 1) "" else "s"}"
         else -> "${rows.size} of ${vm.parts.size} shown"
     }
@@ -169,7 +191,7 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                if (vm.parts.isEmpty()) "No parts saved yet." else "No matches.",
+                                if (vm.parts.isEmpty() && vm.locations.isEmpty()) "No parts saved yet." else "No matches.",
                                 color = c.muted,
                                 fontWeight = FontWeight.Medium
                             )
@@ -178,13 +200,13 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
                 }
             }
 
-            itemsIndexed(rows, key = { _, r -> r.part.id }) { index, r ->
+            itemsIndexed(rows, key = { _, r -> r.partId ?: "empty:${r.location.lowercase()}" }) { index, r ->
                 PartRow(
                     row = r,
-                    model = PartsLogic.modelFor(r.part.partNumber, vm.modelCodes),
+                    model = if (r.isEmpty) "" else PartsLogic.modelFor(r.partNumber, vm.modelCodes),
                     showBadge = grouped,
                     showDivider = index != rows.lastIndex,
-                    onClick = { vm.openLocSheet(r.part.location) }
+                    onClick = { vm.openLocSheet(r.location) }
                 )
             }
 
@@ -479,30 +501,53 @@ private fun PartRow(row: ListRow, model: String, showBadge: Boolean, showDivider
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(Modifier.weight(W_PART), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        row.part.partNumber,
-                        Modifier.weight(1f, fill = false),
-                        color = c.text,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                    if (showBadge && row.extra > 0) {
+                    if (row.isEmpty) {
                         Text(
-                            "+${row.extra}",
-                            Modifier
-                                .padding(start = 8.dp)
-                                .clip(PillShape)
-                                .background(c.surface2)
-                                .padding(horizontal = 9.dp, vertical = 4.dp),
-                            color = c.accent,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            "Empty",
+                            color = c.muted,
+                            fontStyle = FontStyle.Italic,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp
                         )
+                    } else {
+                        Text(
+                            row.partNumber,
+                            Modifier.weight(1f, fill = false),
+                            color = c.text,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        if (row.variant.isNotEmpty()) {
+                            Text(
+                                row.variant,
+                                Modifier
+                                    .padding(start = 8.dp)
+                                    .clip(PillShape)
+                                    .background(c.surface2)
+                                    .padding(horizontal = 9.dp, vertical = 4.dp),
+                                color = c.muted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (showBadge && row.extra > 0) {
+                            Text(
+                                "+${row.extra}",
+                                Modifier
+                                    .padding(start = 8.dp)
+                                    .clip(PillShape)
+                                    .background(c.surface2)
+                                    .padding(horizontal = 9.dp, vertical = 4.dp),
+                                color = c.accent,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
                     }
                 }
                 Text(
-                    row.part.location,
+                    row.location,
                     Modifier.weight(W_LOC).padding(end = 6.dp),
                     color = c.text,
                     fontWeight = FontWeight.SemiBold,
