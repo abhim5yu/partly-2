@@ -1,5 +1,7 @@
 package com.partspicker.app
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
@@ -46,9 +49,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,11 +70,17 @@ private data class ListRow(
     val isEmpty: Boolean
 )
 
+/**
+ * Builds every row (real parts + empty saved locations), then sorts the WHOLE list by
+ * location using natural order (so "13A0101" < "13A0102" < "13A0201" < "13A102",
+ * not plain string order). The home screen then groups this single sorted list into
+ * "13A" / "13B" / "13C"-style sections for display.
+ */
 private fun buildRows(parts: List<Part>, locations: List<LocationItem>, query: String): Pair<List<ListRow>, Boolean> {
     val q = query.trim().lowercase()
-    val filtered = parts.filter {
+    val matchingParts = parts.filter {
         q.isEmpty() || it.partNumber.lowercase().contains(q) || it.location.lowercase().contains(q)
-    }.asReversed()
+    }
 
     val usedLower = parts.map { it.location.lowercase() }.toHashSet()
     val emptyRows = locations
@@ -79,31 +89,34 @@ private fun buildRows(parts: List<Part>, locations: List<LocationItem>, query: S
         .map { ListRow(null, "", "", it.value, 0, true) }
 
     if (q.isNotEmpty()) {
-        val partRows = filtered.map { ListRow(it.id, it.partNumber, it.variant, it.location, 0, false) }
-        return (partRows + emptyRows) to false
+        val partRows = matchingParts.map { ListRow(it.id, it.partNumber, it.variant, it.location, 0, false) }
+        val all = (partRows + emptyRows).sortedWith(compareBy(PartsLogic.naturalOrder) { it.location })
+        return all to false
     }
 
     val counts = HashMap<String, Int>()
-    val firsts = ArrayList<Part>()
-    for (p in filtered) {
+    val firsts = LinkedHashMap<String, Part>()
+    for (p in parts) {
         val k = p.location.lowercase()
-        val n = counts[k]
-        if (n == null) {
-            counts[k] = 0
-            firsts.add(p)
+        val existing = firsts[k]
+        if (existing == null) {
+            firsts[k] = p
         } else {
-            counts[k] = n + 1
+            counts[k] = (counts[k] ?: 0) + 1
         }
     }
-    val partRows = firsts.map { ListRow(it.id, it.partNumber, it.variant, it.location, counts[it.location.lowercase()] ?: 0, false) }
-    return (partRows + emptyRows) to true
+    val partRows = firsts.values.map { ListRow(it.id, it.partNumber, it.variant, it.location, counts[it.location.lowercase()] ?: 0, false) }
+    val all = (partRows + emptyRows).sortedWith(compareBy(PartsLogic.naturalOrder) { it.location })
+    return all to true
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () -> Unit) {
     val c = LocalAppColors.current
+    val context = LocalContext.current
     val (rows, grouped) = remember(vm.parts, vm.locations, vm.searchQuery) { buildRows(vm.parts, vm.locations, vm.searchQuery) }
+    val sections = remember(rows) { rows.groupBy { PartsLogic.sectionKeyOf(it.location) } }
     val dupCount = remember(vm.parts, vm.ignoredDups) {
         PartsLogic.findDuplicates(vm.parts, vm.ignoredDups).size
     }
@@ -112,6 +125,9 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
         if (vm.focusPartTick > 0) {
             try { partFocus.requestFocus() } catch (_: Exception) { }
         }
+    }
+    LaunchedEffect(Unit) {
+        vm.checkForUpdate(BuildConfig.VERSION_NAME)
     }
 
     val countLabel = when {
@@ -132,6 +148,18 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
                 .imePadding(),
             contentPadding = PaddingValues(bottom = 150.dp)
         ) {
+            vm.updateInfo?.let { info ->
+                item {
+                    UpdateBanner(
+                        info = info,
+                        onUpdate = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.url)))
+                        },
+                        onDismiss = vm::dismissUpdateBanner
+                    )
+                }
+            }
+
             item {
                 Column(Modifier.padding(start = 22.dp, end = 22.dp, top = 30.dp, bottom = 6.dp)) {
                     Eyebrow("Inventory", Modifier.padding(bottom = 10.dp))
@@ -183,7 +211,7 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
 
             item { TableHeader() }
 
-            if (rows.isEmpty()) {
+            if (sections.isEmpty()) {
                 item {
                     Box(Modifier.padding(horizontal = 16.dp)) {
                         Box(
@@ -200,14 +228,17 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
                 }
             }
 
-            itemsIndexed(rows, key = { _, r -> r.partId ?: "empty:${r.location.lowercase()}" }) { index, r ->
-                PartRow(
-                    row = r,
-                    model = if (r.isEmpty) "" else PartsLogic.modelFor(r.partNumber, vm.modelCodes),
-                    showBadge = grouped,
-                    showDivider = index != rows.lastIndex,
-                    onClick = { vm.openLocSheet(r.location) }
-                )
+            sections.forEach { (sectionKey, sectionRows) ->
+                item(key = "section:$sectionKey") { SectionHeaderRow(sectionKey) }
+                itemsIndexed(sectionRows, key = { _, r -> r.partId ?: "empty:${r.location.lowercase()}" }) { index, r ->
+                    PartRow(
+                        row = r,
+                        model = if (r.isEmpty) "" else PartsLogic.modelFor(r.partNumber, vm.modelCodes),
+                        showBadge = grouped,
+                        showDivider = index != sectionRows.lastIndex,
+                        onClick = { vm.openLocSheet(r.location) }
+                    )
+                }
             }
 
             item {
@@ -229,6 +260,54 @@ fun MainScreen(vm: PartsViewModel, listState: LazyListState, onOpenSettings: () 
             onClick = onOpenSettings,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
+    }
+}
+
+@Composable
+private fun UpdateBanner(info: UpdateInfo, onUpdate: () -> Unit, onDismiss: () -> Unit) {
+    val c = LocalAppColors.current
+    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .lift(Radius, 3.dp)
+                .clip(Radius)
+                .background(c.accent)
+                .padding(start = 16.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Update available — v${info.version}",
+                    color = c.onAccent, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    "A newer build is ready on GitHub",
+                    color = c.onAccent.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.Medium
+                )
+            }
+            PillButton(
+                "Update",
+                onClick = onUpdate,
+                container = c.ink, content = c.onInk,
+                height = 38.dp, fontSize = 13.sp, horizontalPadding = 16.dp
+            )
+            IconBtn(Icons.Filled.Close, "Dismiss", onDismiss, tint = c.onAccent, background = c.accent.copy(alpha = 0.001f), size = 32.dp)
+        }
+    }
+}
+
+@Composable
+private fun SectionHeaderRow(sectionKey: String) {
+    val c = LocalAppColors.current
+    Box(Modifier.padding(horizontal = 16.dp)) {
+        Box(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 18.dp, top = 16.dp, bottom = 6.dp)) {
+            Text(
+                sectionKey,
+                color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp
+            )
+        }
     }
 }
 
