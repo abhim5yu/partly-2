@@ -302,7 +302,7 @@ private fun UpdateBanner(info: UpdateInfo, onUpdate: () -> Unit, onDismiss: () -
 private fun SectionHeaderRow(sectionKey: String) {
     val c = LocalAppColors.current
     Box(Modifier.padding(horizontal = 16.dp)) {
-        Box(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 18.dp, top = 16.dp, bottom = 6.dp)) {
+        Box(Modifier.fillMaxWidth().background(c.surface).padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 6.dp)) {
             Text(
                 sectionKey,
                 color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp
