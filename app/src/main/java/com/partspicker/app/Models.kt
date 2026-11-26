@@ -1,6 +1,6 @@
 package com.partspicker.app
 
-data class Part(val id: String, val partNumber: String, val location: String)
+data class Part(val id: String, val partNumber: String, val location: String, val variant: String = "")
 
 data class LocationItem(val id: String, val value: String, val group: String)
 
