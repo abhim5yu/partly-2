@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,20 +64,78 @@ private fun DupAddSheet(vm: PartsViewModel, p: PendingDup) {
     }
 }
 
+/**
+ * Shown when the Location box already holds a different part number than the one
+ * being typed in. Shows the two parts stacked (what's already there vs. what's
+ * incoming) so it's visually obvious which is which, then three plain, full-width
+ * actions instead of a cramped three-across row.
+ */
 @Composable
 private fun ConflictSheet(vm: PartsViewModel, p: PendingConflict) {
     val c = LocalAppColors.current
     AppSheet(onDismiss = vm::cancelConflict) {
         Text(
-            "Location \"${p.location}\" already has part \"${p.existingPartNumber}\". " +
-                "Add this as another part here, or replace it?",
-            Modifier.padding(start = 4.dp, end = 4.dp, bottom = 18.dp),
-            color = c.text, fontSize = 18.sp, fontWeight = FontWeight.Bold
+            "This location already has a different part",
+            Modifier.padding(start = 4.dp, end = 4.dp, bottom = 2.dp),
+            color = c.text, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton("Cancel", vm::cancelConflict, Modifier.weight(1f), container = c.surface2, content = c.text, horizontalPadding = 8.dp)
-            PillButton("Add anyway", vm::conflictAddAnyway, Modifier.weight(1f), container = c.surface2, content = c.text, horizontalPadding = 8.dp)
-            PillButton("Replace", vm::conflictReplace, Modifier.weight(1f), container = c.error, content = Color.White, horizontalPadding = 8.dp)
+        Text(
+            p.location,
+            Modifier.padding(start = 4.dp, end = 4.dp, bottom = 16.dp),
+            color = c.muted, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+        )
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(Radius)
+                .background(c.surface2)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            ConflictPartRow(label = "Already saved here", partNumber = p.existingPartNumber, dotColor = c.muted)
+            HorizontalDivider(color = c.line)
+            ConflictPartRow(label = "You're adding", partNumber = p.partNumber, dotColor = c.accent)
+        }
+
+        Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton(
+                "Replace — keep only \"${p.partNumber}\" here",
+                vm::conflictReplace,
+                Modifier.fillMaxWidth(),
+                container = c.error, content = Color.White,
+                fontSize = 14.sp
+            )
+            PillButton(
+                "Keep both parts in this location",
+                vm::conflictAddAnyway,
+                Modifier.fillMaxWidth(),
+                container = c.surface2, content = c.text,
+                fontSize = 14.sp
+            )
+            PillButton(
+                "Cancel",
+                vm::cancelConflict,
+                Modifier.fillMaxWidth(),
+                container = Color.Transparent, content = c.muted,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConflictPartRow(label: String, partNumber: String, dotColor: Color) {
+    val c = LocalAppColors.current
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(dotColor))
+        Column {
+            Text(label, color = c.muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(
+                partNumber,
+                color = c.text, fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.ExtraBold, fontSize = 18.sp
+            )
         }
     }
 }
