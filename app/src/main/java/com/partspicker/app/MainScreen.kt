@@ -2,6 +2,7 @@ package com.partspicker.app
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -168,7 +169,28 @@ fun MainScreen(
 
             item {
                 Column(Modifier.padding(start = 22.dp, end = 22.dp, top = 30.dp, bottom = 6.dp)) {
-                    Eyebrow("Inventory", Modifier.padding(bottom = 10.dp))
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Eyebrow("Inventory")
+                        // Easter egg: tap the version to check for an update, every time.
+                        Text(
+                            "v${BuildConfig.VERSION_NAME}",
+                            Modifier
+                                .clip(PillShape)
+                                .clickable {
+                                    vm.checkForUpdateNow(BuildConfig.VERSION_NAME) { msg ->
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            color = c.muted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                     Text(
                         "Parts Picker",
                         color = c.text,
@@ -316,56 +338,22 @@ private fun SectionHeaderRow(sectionKey: String) {
     }
 }
 
-/** Floating bottom nav: exactly two buttons — Sheets and Settings. */
+/** Floating glass nav: exactly two buttons — Sheets and Settings. */
 @Composable
 fun NavDock(onSheets: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
-    val c = LocalAppColors.current
-    Box(
-        modifier
-            .navigationBarsPadding()
-            .padding(bottom = 18.dp)
-            .lift(PillShape, 12.dp)
-            .clip(PillShape)
-            .background(c.ink)
-            .padding(6.dp)
-    ) {
+    GlassPill(modifier.navigationBarsPadding().padding(bottom = 18.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            DockButton("Sheets", Icons.Filled.TableChart, onSheets)
-            DockButton("Settings", Icons.Filled.Settings, onSettings)
+            GlassButton("Sheets", Icons.Filled.TableChart, onSheets)
+            GlassButton("Settings", Icons.Filled.Settings, onSettings)
         }
     }
 }
 
+/** Single-button glass dock (used for "Back" on the Settings screen). */
 @Composable
 fun Dock(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val c = LocalAppColors.current
-    Box(
-        modifier
-            .navigationBarsPadding()
-            .padding(bottom = 18.dp)
-            .lift(PillShape, 12.dp)
-            .clip(PillShape)
-            .background(c.ink)
-            .padding(6.dp)
-    ) {
-        DockButton(label, icon, onClick)
-    }
-}
-
-@Composable
-private fun DockButton(label: String, icon: ImageVector, onClick: () -> Unit) {
-    val c = LocalAppColors.current
-    Row(
-        Modifier
-            .clip(PillShape)
-            .clickable(onClick = onClick)
-            .height(48.dp)
-            .padding(start = 18.dp, end = 22.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Icon(icon, contentDescription = null, tint = c.onInk, modifier = Modifier.size(20.dp))
-        Text(label, color = c.onInk, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+    GlassPill(modifier.navigationBarsPadding().padding(bottom = 18.dp)) {
+        GlassButton(label, icon, onClick)
     }
 }
 

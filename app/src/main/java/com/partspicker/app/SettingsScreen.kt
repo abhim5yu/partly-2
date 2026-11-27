@@ -134,6 +134,15 @@ fun SettingsScreen(
                 }
             }
 
+            item { SettingsLabel("Navigation bar") }
+            item {
+                NavGlassCard(
+                    transparency = vm.navTransparency,
+                    onChange = vm::setNavTransparency,
+                    onChangeFinished = vm::saveNavTransparency
+                )
+            }
+
             item { SettingsLabel("Part number decoding") }
             item {
                 Row(

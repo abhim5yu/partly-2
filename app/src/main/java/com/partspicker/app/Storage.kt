@@ -86,10 +86,18 @@ class Storage(context: Context) {
         prefs.edit().putString(KEY_THEME, mode.name).apply()
     }
 
+    /** How see-through the floating nav bar is (0 = nearly solid, 1 = clearest). */
+    fun loadNavTransparency(): Float =
+        prefs.getString(KEY_NAV_GLASS, null)?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.5f
+
+    fun saveNavTransparency(value: Float) {
+        prefs.edit().putString(KEY_NAV_GLASS, value.toString()).apply()
+    }
+
     /** Bundles every raw pref string as-is into one JSON file — survives reinstalls. */
     fun exportBundle(): String {
         val obj = JSONObject()
-        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME).forEach { key ->
+        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME, KEY_NAV_GLASS).forEach { key ->
             val raw = prefs.getString(key, null)
             if (raw != null) obj.put(key, raw)
         }
@@ -99,7 +107,7 @@ class Storage(context: Context) {
     fun importBundle(json: String) {
         val obj = JSONObject(json)
         val editor = prefs.edit()
-        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME).forEach { key ->
+        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME, KEY_NAV_GLASS).forEach { key ->
             if (obj.has(key) && !obj.isNull(key)) editor.putString(key, obj.getString(key))
         }
         editor.apply()
@@ -112,5 +120,6 @@ class Storage(context: Context) {
         const val KEY_SHEETS = "partsPickerSheetLinks"
         const val KEY_IGNORED = "partsPickerIgnoredDuplicates"
         const val KEY_THEME = "partsPickerTheme"
+        const val KEY_NAV_GLASS = "partsPickerNavGlass"
     }
 }

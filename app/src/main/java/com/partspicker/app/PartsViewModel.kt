@@ -3,6 +3,7 @@ package com.partspicker.app
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -26,6 +27,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var sheetLinks by mutableStateOf<List<SheetLink>>(emptyList()); private set
     var ignoredDups by mutableStateOf<List<String>>(emptyList()); private set
     var themeMode by mutableStateOf(ThemeMode.AUTO); private set
+    var navTransparency by mutableFloatStateOf(0.5f); private set
 
     var searchQuery by mutableStateOf("")
     var partNumberInput by mutableStateOf("")
@@ -62,11 +64,41 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         sheetLinks = storage.loadSheetLinks()
         ignoredDups = storage.loadIgnored()
         themeMode = storage.loadTheme()
+        navTransparency = storage.loadNavTransparency()
     }
 
     fun setTheme(mode: ThemeMode) {
         themeMode = mode
         storage.saveTheme(mode)
+    }
+
+    /** Live-updates the nav bar transparency while the slider is dragged (not saved yet). */
+    fun setNavTransparency(value: Float) {
+        navTransparency = value.coerceIn(0f, 1f)
+    }
+
+    /** Saves the nav bar transparency once the slider is released. */
+    fun saveNavTransparency() {
+        storage.saveNavTransparency(navTransparency)
+    }
+
+    /** Asks the GitHub "latest release" API for the newest tag + page. Throws if it can't. */
+    private fun fetchLatestRelease(): Pair<String, String> {
+        val url = URL("https://api.github.com/repos/abhim5yu/partly-2/releases/latest")
+        val conn = url.openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("Accept", "application/vnd.github+json")
+            conn.connectTimeout = 8000
+            conn.readTimeout = 8000
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val obj = JSONObject(body)
+            val tag = obj.optString("tag_name", "").removePrefix("v").removePrefix("V")
+            val htmlUrl = obj.optString("html_url", "https://github.com/abhim5yu/partly-2/releases")
+            return tag to htmlUrl
+        } finally {
+            conn.disconnect()
+        }
     }
 
     /**
@@ -80,17 +112,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         updateCheckStarted = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val url = URL("https://api.github.com/repos/abhim5yu/partly-2/releases/latest")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("Accept", "application/vnd.github+json")
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
-                val body = conn.inputStream.bufferedReader().use { it.readText() }
-                conn.disconnect()
-                val obj = JSONObject(body)
-                val tag = obj.optString("tag_name", "").removePrefix("v").removePrefix("V")
-                val htmlUrl = obj.optString("html_url", "https://github.com/abhim5yu/partly-2/releases")
+                val (tag, htmlUrl) = fetchLatestRelease()
                 if (tag.isNotEmpty() && tag != currentVersion) {
                     withContext(Dispatchers.Main) {
                         updateInfo = UpdateInfo(tag, htmlUrl)
@@ -99,6 +121,27 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
                 // No connectivity, rate-limited, or no releases yet — just skip it.
             }
+        }
+    }
+
+    /**
+     * Tapping the version number: checks every single time and reports the outcome via
+     * [onResult] (shown as a toast). A newer version also raises the update banner.
+     */
+    fun checkForUpdateNow(currentVersion: String, onResult: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val message = try {
+                val (tag, htmlUrl) = fetchLatestRelease()
+                if (tag.isNotEmpty() && tag != currentVersion) {
+                    withContext(Dispatchers.Main) { updateInfo = UpdateInfo(tag, htmlUrl) }
+                    "Update available — v$tag"
+                } else {
+                    "You're up to date (v$currentVersion)"
+                }
+            } catch (_: Exception) {
+                "Couldn't check for updates"
+            }
+            withContext(Dispatchers.Main) { onResult(message) }
         }
     }
 
@@ -422,6 +465,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             sheetLinks = storage.loadSheetLinks()
             ignoredDups = storage.loadIgnored()
             themeMode = storage.loadTheme()
+            navTransparency = storage.loadNavTransparency()
             backupStatus = "Backup restored."
         } catch (e: Exception) {
             backupStatus = "Restore failed: ${e.message}"

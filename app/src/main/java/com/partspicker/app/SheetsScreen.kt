@@ -1,9 +1,5 @@
 package com.partspicker.app
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,22 +27,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Sheets section (opened from the Sheets button in the dock): a plain list of the
- * Google Sheets used for stock taking, shown by name only (Sheet1, Sheet2, ...).
- * Individual sheets are never added to the dock — the dock only has Sheets and Settings.
- * Tapping a sheet opens it (in the Google Sheets app if installed) so stock can be
- * updated there; the pencil edits the name/link and also holds the delete button.
+ * Sheets section (opened from the Sheets button in the dock). Shows the Google Sheets used
+ * for stock taking by name only (Sheet1, Sheet2, ...). Individual sheets are never added to
+ * the dock — it only has Sheets and Settings. Tapping a sheet opens the real Google Sheets
+ * editor inside the app, so edits land directly in the Google Sheet.
  */
 @Composable
 fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
+    var viewingId by rememberSaveable { mutableStateOf<String?>(null) }
+    val viewing = vm.sheetLinks.firstOrNull { it.id == viewingId }
+
+    if (viewing != null) {
+        SheetViewerScreen(sheet = viewing, onBack = { viewingId = null })
+    } else {
+        SheetListScreen(vm, onBack = onBack, onOpen = { viewingId = it.id })
+    }
+}
+
+@Composable
+private fun SheetListScreen(vm: PartsViewModel, onBack: () -> Unit, onOpen: (SheetLink) -> Unit) {
     val c = LocalAppColors.current
-    val context = LocalContext.current
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showAdd by rememberSaveable { mutableStateOf(false) }
 
@@ -95,13 +100,7 @@ fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
                     } else {
                         SheetCard(
                             name = sheet.name,
-                            onOpen = {
-                                try {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(sheet.url)))
-                                } catch (_: ActivityNotFoundException) {
-                                    Toast.makeText(context, "Couldn't open that link.", Toast.LENGTH_SHORT).show()
-                                }
-                            },
+                            onOpen = { onOpen(sheet) },
                             onEdit = { editingId = sheet.id }
                         )
                     }

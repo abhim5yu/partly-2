@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -48,26 +49,28 @@ fun PartsPickerApp(
     onImportBackup: () -> Unit = {}
 ) {
     AppTheme(vm.themeMode) {
-        var showSettings by rememberSaveable { mutableStateOf(false) }
-        var showSheets by rememberSaveable { mutableStateOf(false) }
-        val listState = rememberLazyListState()
+        CompositionLocalProvider(LocalNavTransparency provides vm.navTransparency) {
+            var showSettings by rememberSaveable { mutableStateOf(false) }
+            var showSheets by rememberSaveable { mutableStateOf(false) }
+            val listState = rememberLazyListState()
 
-        BackHandler(enabled = showSettings || showSheets) {
-            showSettings = false
-            showSheets = false
+            BackHandler(enabled = showSettings || showSheets) {
+                showSettings = false
+                showSheets = false
+            }
+
+            when {
+                showSettings -> SettingsScreen(vm, onBack = { showSettings = false }, onExportBackup, onImportBackup)
+                showSheets -> SheetsScreen(vm, onBack = { showSheets = false })
+                else -> MainScreen(
+                    vm,
+                    listState,
+                    onOpenSheets = { showSheets = true },
+                    onOpenSettings = { showSettings = true }
+                )
+            }
+
+            AppSheets(vm)
         }
-
-        when {
-            showSettings -> SettingsScreen(vm, onBack = { showSettings = false }, onExportBackup, onImportBackup)
-            showSheets -> SheetsScreen(vm, onBack = { showSheets = false })
-            else -> MainScreen(
-                vm,
-                listState,
-                onOpenSheets = { showSheets = true },
-                onOpenSettings = { showSettings = true }
-            )
-        }
-
-        AppSheets(vm)
     }
 }
