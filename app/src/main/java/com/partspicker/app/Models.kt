@@ -8,10 +8,20 @@ data class ModelCode(val id: String, val code: String, val model: String)
 
 /**
  * One input box for a sheet: its display name, which sheet column (1 = A, 2 = B, ...) it
- * fills, and a stable id used only to track it through the drag-to-reorder grid (never
- * shown anywhere in the UI).
+ * fills, and a stable id used to track it (never shown anywhere in the UI).
+ *
+ * gx/gy/gw/gh are the box's place on the 5-column grid: column, row, width and height in
+ * cells. gx = -1 / gw = 0 means "not placed yet" — [laidOut] gives it a spot.
  */
-data class SheetField(val label: String, val col: Int, val id: String = PartsLogic.makeId())
+data class SheetField(
+    val label: String,
+    val col: Int,
+    val id: String = PartsLogic.makeId(),
+    val gx: Int = -1,
+    val gy: Int = 0,
+    val gw: Int = 0,
+    val gh: Int = 1
+)
 
 /** A Google Sheet shown in the Sheets section (Sheet1, Sheet2, etc.) plus its input boxes. */
 data class SheetLink(
