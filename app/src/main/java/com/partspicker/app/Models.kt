@@ -6,8 +6,19 @@ data class LocationItem(val id: String, val value: String, val group: String)
 
 data class ModelCode(val id: String, val code: String, val model: String)
 
-/** A link to an external Google Sheet shown in the Sheets section (Sheet1, Sheet2, etc.). */
-data class SheetLink(val id: String, val name: String, val url: String)
+/** One input box for a sheet: its display name and which sheet column (1 = A, 2 = B, ...) it fills. */
+data class SheetField(val label: String, val col: Int)
+
+/** A Google Sheet shown in the Sheets section (Sheet1, Sheet2, etc.) plus its input boxes. */
+data class SheetLink(
+    val id: String,
+    val name: String,
+    val url: String,
+    val fields: List<SheetField> = emptyList()
+)
+
+/** The latest contents of a Google Sheet as plain text cells (row 0 = header row). */
+data class SheetData(val title: String, val tab: String, val values: List<List<String>>)
 
 data class DuplicateGroup(val partNumber: String, val locations: List<String>)
 

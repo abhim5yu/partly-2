@@ -12,9 +12,12 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
+import java.util.UUID
 
 data class UpdateInfo(val version: String, val url: String)
 
@@ -46,6 +49,17 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     var sheetError by mutableStateOf("")
     var backupStatus by mutableStateOf("")
 
+    // --- Google Sheets (through the pasted Apps Script) ---
+    var scriptUrl by mutableStateOf(""); private set
+    var scriptToken by mutableStateOf(""); private set
+    var sheetData by mutableStateOf<SheetData?>(null); private set
+    var sheetDataFor by mutableStateOf<String?>(null); private set
+    var sheetLoading by mutableStateOf(false); private set
+    var addingToSheet by mutableStateOf(false); private set
+    var sheetOpStatus by mutableStateOf(""); private set
+    var sheetOpFailed by mutableStateOf(false); private set
+    var lastAddedRow by mutableIntStateOf(-1); private set
+
     var updateInfo by mutableStateOf<UpdateInfo?>(null); private set
     private var updateCheckStarted = false
 
@@ -65,6 +79,8 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         ignoredDups = storage.loadIgnored()
         themeMode = storage.loadTheme()
         navTransparency = storage.loadNavTransparency()
+        scriptUrl = storage.loadScriptUrl()
+        scriptToken = storage.loadScriptToken()
     }
 
     fun setTheme(mode: ThemeMode) {
@@ -188,6 +204,186 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         sheetLinks = sheetLinks.filter { it.id != id }
         storage.saveSheetLinks(sheetLinks)
     }
+
+    /** Replaces the input boxes (name + column) of one sheet. */
+    fun updateSheetFields(id: String, fields: List<SheetField>) {
+        sheetLinks = sheetLinks.map { if (it.id == id) it.copy(fields = fields) else it }
+        storage.saveSheetLinks(sheetLinks)
+    }
+
+    // ---------------- Google Sheets bridge ----------------
+
+    fun saveScriptUrl(url: String) {
+        scriptUrl = url.trim()
+        storage.saveScriptUrl(scriptUrl)
+    }
+
+    /** Creates the private token the first time it's needed; the same one is baked into the copied script. */
+    fun ensureScriptToken(): String {
+        if (scriptToken.isBlank()) {
+            scriptToken = UUID.randomUUID().toString().replace("-", "")
+            storage.saveScriptToken(scriptToken)
+        }
+        return scriptToken
+    }
+
+    private fun reportSheetOp(text: String, failed: Boolean) {
+        sheetOpStatus = text
+        sheetOpFailed = failed
+    }
+
+    private fun friendlyError(e: Exception): String = when (e) {
+        is java.net.UnknownHostException,
+        is java.net.ConnectException,
+        is java.net.SocketTimeoutException -> "Couldn't reach Google. Check your internet connection."
+        else -> e.message?.takeIf { it.isNotBlank() } ?: "Something went wrong."
+    }
+
+    /** Calls the pasted Apps Script web app (plain GET) and returns its JSON answer. Blocking — call off the main thread. */
+    private fun callScript(params: Map<String, String>): JSONObject {
+        val base = scriptUrl.trim()
+        if (base.isEmpty()) throw IllegalStateException("Connect Google first.")
+        val query = params.entries.joinToString("&") {
+            URLEncoder.encode(it.key, "UTF-8") + "=" + URLEncoder.encode(it.value, "UTF-8")
+        }
+        val full = base + (if ('?' in base) "&" else "?") + query
+        val conn = URL(full).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 15000
+            conn.readTimeout = 60000
+            conn.instanceFollowRedirects = true
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+            return try {
+                JSONObject(body)
+            } catch (e: Exception) {
+                throw IllegalStateException(
+                    "The script didn't answer properly. Check it's deployed as a Web app with access set to Anyone."
+                )
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** First time a sheet loads with no boxes yet: make one per header cell (up to 5). */
+    private fun seedFieldsIfNeeded(sheetId: String, values: List<List<String>>) {
+        val current = sheetLinks.firstOrNull { it.id == sheetId } ?: return
+        if (current.fields.isNotEmpty()) return
+        val header = values.firstOrNull() ?: return
+        val defaults = header.withIndex()
+            .filter { it.value.isNotBlank() }
+            .take(5)
+            .map { SheetField(it.value.trim(), it.index + 1) }
+        if (defaults.isNotEmpty()) updateSheetFields(sheetId, defaults)
+    }
+
+    /** Fetches the latest contents of a sheet from Google. */
+    fun loadSheet(sheet: SheetLink, keepStatus: Boolean = false) {
+        if (sheetDataFor != sheet.id) {
+            sheetData = null
+            lastAddedRow = -1
+        }
+        if (!keepStatus) reportSheetOp("", false)
+        if (scriptUrl.isBlank()) {
+            reportSheetOp("Connect Google first (Sheets screen → Google connection).", true)
+            return
+        }
+        val id = sheetIdOf(sheet.url)
+        if (id == null) {
+            reportSheetOp("That doesn't look like a Google Sheets link.", true)
+            return
+        }
+        sheetLoading = true
+        val gid = sheetGidOf(sheet.url) ?: ""
+        val token = scriptToken
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val res = callScript(mapOf("token" to token, "action" to "read", "id" to id, "gid" to gid))
+                if (!res.optBoolean("ok")) throw IllegalStateException(res.optString("error", "Unknown error"))
+                val arr = res.getJSONArray("values")
+                val values = List(arr.length()) { r ->
+                    val row = arr.getJSONArray(r)
+                    List(row.length()) { col -> row.optString(col, "") }
+                }
+                val data = SheetData(res.optString("title", ""), res.optString("tab", ""), values)
+                withContext(Dispatchers.Main) {
+                    sheetData = data
+                    sheetDataFor = sheet.id
+                    sheetLoading = false
+                    seedFieldsIfNeeded(sheet.id, values)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    sheetLoading = false
+                    reportSheetOp(friendlyError(e), true)
+                }
+            }
+        }
+    }
+
+    /**
+     * Writes one entry (a value per input box, in order) into the first empty row of the
+     * sheet, then reloads the sheet. [onResult] tells the screen whether it worked.
+     */
+    fun addToSheet(sheet: SheetLink, values: List<String>, onResult: (Boolean) -> Unit) {
+        if (scriptUrl.isBlank()) {
+            reportSheetOp("Connect Google first (Sheets screen → Google connection).", true)
+            onResult(false)
+            return
+        }
+        val id = sheetIdOf(sheet.url)
+        if (id == null) {
+            reportSheetOp("That doesn't look like a Google Sheets link.", true)
+            onResult(false)
+            return
+        }
+        if (sheet.fields.isEmpty()) {
+            reportSheetOp("Add at least one box first (pencil icon).", true)
+            onResult(false)
+            return
+        }
+        if (values.all { it.isBlank() }) {
+            reportSheetOp("Fill in at least one box.", true)
+            onResult(false)
+            return
+        }
+        addingToSheet = true
+        reportSheetOp("", false)
+        val token = scriptToken
+        val gid = sheetGidOf(sheet.url) ?: ""
+        val cols = JSONArray(sheet.fields.map { it.col }).toString()
+        val vals = JSONArray(values.map { it.trim() }).toString()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val res = callScript(
+                    mapOf(
+                        "token" to token, "action" to "add", "id" to id, "gid" to gid,
+                        "cols" to cols, "vals" to vals
+                    )
+                )
+                if (!res.optBoolean("ok")) throw IllegalStateException(res.optString("error", "Unknown error"))
+                val row = res.optInt("row", -1)
+                withContext(Dispatchers.Main) {
+                    addingToSheet = false
+                    lastAddedRow = row
+                    reportSheetOp("Added to row $row.", false)
+                    onResult(true)
+                    loadSheet(sheet, keepStatus = true)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    addingToSheet = false
+                    reportSheetOp(friendlyError(e), true)
+                    onResult(false)
+                }
+            }
+        }
+    }
+
+    // ---------------- Parts ----------------
 
     fun addPart() {
         val pn = partNumberInput.trim()
@@ -470,6 +666,8 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             ignoredDups = storage.loadIgnored()
             themeMode = storage.loadTheme()
             navTransparency = storage.loadNavTransparency()
+            scriptUrl = storage.loadScriptUrl()
+            scriptToken = storage.loadScriptToken()
             backupStatus = "Backup restored."
         } catch (e: Exception) {
             backupStatus = "Restore failed: ${e.message}"

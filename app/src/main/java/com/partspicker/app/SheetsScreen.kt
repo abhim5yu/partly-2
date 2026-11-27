@@ -1,5 +1,9 @@
 package com.partspicker.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,9 +15,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
@@ -27,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,8 +41,8 @@ import androidx.compose.ui.unit.sp
 /**
  * Sheets section (opened from the Sheets button in the dock). Shows the Google Sheets used
  * for stock taking by name only (Sheet1, Sheet2, ...). Individual sheets are never added to
- * the dock — it only has Sheets and Settings. Tapping a sheet opens the real Google Sheets
- * editor inside the app, so edits land directly in the Google Sheet.
+ * the dock — it only has Sheets and Settings. Tapping a sheet opens it in the app's own UI:
+ * input boxes to add entries + the latest sheet contents.
  */
 @Composable
 fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
@@ -43,7 +50,7 @@ fun SheetsScreen(vm: PartsViewModel, onBack: () -> Unit) {
     val viewing = vm.sheetLinks.firstOrNull { it.id == viewingId }
 
     if (viewing != null) {
-        SheetViewerScreen(sheet = viewing, onBack = { viewingId = null })
+        SheetViewerScreen(vm = vm, sheet = viewing, onBack = { viewingId = null })
     } else {
         SheetListScreen(vm, onBack = onBack, onOpen = { viewingId = it.id })
     }
@@ -130,6 +137,12 @@ private fun SheetListScreen(vm: PartsViewModel, onBack: () -> Unit, onOpen: (She
                 }
             }
 
+            item {
+                Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 22.dp)) {
+                    ConnectionCard(vm)
+                }
+            }
+
             item { Box(Modifier.navigationBarsPadding()) }
         }
     }
@@ -156,6 +169,106 @@ private fun SheetCard(name: String, onOpen: () -> Unit, onEdit: () -> Unit) {
             maxLines = 1
         )
         IconBtn(Icons.Filled.Edit, "Edit $name", onEdit, tint = c.muted, background = c.surface2, size = 40.dp)
+    }
+}
+
+/**
+ * One-time setup: the person copies a small Google Apps Script from here, deploys it as a
+ * web app, and pastes its URL back. That lets the app read and write their Google Sheets.
+ */
+@Composable
+private fun ConnectionCard(vm: PartsViewModel) {
+    val c = LocalAppColors.current
+    val context = LocalContext.current
+    var open by rememberSaveable { mutableStateOf(vm.scriptUrl.isBlank()) }
+    var url by remember { mutableStateOf(vm.scriptUrl) }
+    var error by remember { mutableStateOf("") }
+    val connected = vm.scriptUrl.isNotBlank()
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .lift(RadiusXl)
+            .clip(RadiusXl)
+            .background(c.surface)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { open = !open }
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SectionLabel("Google connection")
+                Text(
+                    if (connected) "Connected" else "Not connected yet",
+                    color = if (connected) c.success else c.muted,
+                    fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
+                )
+            }
+            Box(
+                Modifier.size(26.dp).clip(CircleShape).background(if (open) c.accent else c.surface2),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (open) "–" else "+",
+                    color = if (open) c.onAccent else c.muted,
+                    fontSize = 16.sp, lineHeight = 16.sp
+                )
+            }
+        }
+        if (open) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "One-time setup so the app can read and fill your Google Sheets:\n" +
+                        "1. Tap Copy script.\n" +
+                        "2. Open script.google.com, tap New project, delete the sample code, paste, and Save.\n" +
+                        "3. Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone. Deploy, then allow access.\n" +
+                        "4. Paste the Web app URL below and tap Save.\n\n" +
+                        "Your sheet must be a real Google Sheet. If it shows .XLSX, use File > Save as Google Sheets and add that new link here.",
+                    Modifier.padding(horizontal = 4.dp),
+                    color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp
+                )
+                PillButton(
+                    "Copy script",
+                    onClick = {
+                        val script = appsScriptSource(vm.ensureScriptToken())
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        cm.setPrimaryClip(ClipData.newPlainText("Parts Picker script", script))
+                        Toast.makeText(context, "Script copied", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    container = c.surface2, content = c.text
+                )
+                PillField(
+                    value = url,
+                    onValueChange = { url = it; error = "" },
+                    placeholder = "Paste the Web app URL",
+                    modifier = Modifier.fillMaxWidth(),
+                    forceUppercase = false
+                )
+                StatusText(error, c.error)
+                PillButton(
+                    "Save connection",
+                    onClick = {
+                        val u = url.trim()
+                        if (!u.startsWith("https://") || !u.contains("/exec")) {
+                            error = "That should be the Web app URL ending in /exec."
+                        } else {
+                            error = ""
+                            vm.saveScriptUrl(u)
+                            open = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
     }
 }
 

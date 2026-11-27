@@ -56,14 +56,39 @@ class Storage(context: Context) {
         JSONObject().put("id", it.id).put("code", it.code).put("model", it.model)
     })
 
-    /** Links to external Google Sheets used for stock taking — "Sheet1", "Sheet2", etc. */
-    fun loadSheetLinks(): List<SheetLink> = readArray(KEY_SHEETS) {
-        SheetLink(it.getString("id"), it.getString("name"), it.getString("url"))
+    /** Google Sheets used for stock taking — "Sheet1", "Sheet2", etc. — with their input boxes. */
+    fun loadSheetLinks(): List<SheetLink> = readArray(KEY_SHEETS) { o ->
+        val fa = o.optJSONArray("fields")
+        val fields = if (fa == null) emptyList() else List(fa.length()) { i ->
+            val f = fa.getJSONObject(i)
+            SheetField(f.optString("label", ""), f.optInt("col", 1))
+        }
+        SheetLink(o.getString("id"), o.getString("name"), o.getString("url"), fields)
     } ?: emptyList()
 
-    fun saveSheetLinks(list: List<SheetLink>) = writeArray(KEY_SHEETS, list.map {
-        JSONObject().put("id", it.id).put("name", it.name).put("url", it.url)
+    fun saveSheetLinks(list: List<SheetLink>) = writeArray(KEY_SHEETS, list.map { s ->
+        JSONObject()
+            .put("id", s.id)
+            .put("name", s.name)
+            .put("url", s.url)
+            .put("fields", JSONArray(s.fields.map { f ->
+                JSONObject().put("label", f.label).put("col", f.col)
+            }))
     })
+
+    /** The Google Apps Script web-app URL that lets the app read/write the sheets. */
+    fun loadScriptUrl(): String = prefs.getString(KEY_SCRIPT_URL, "") ?: ""
+
+    fun saveScriptUrl(value: String) {
+        prefs.edit().putString(KEY_SCRIPT_URL, value).apply()
+    }
+
+    /** Private token shared between the app and the pasted script. */
+    fun loadScriptToken(): String = prefs.getString(KEY_SCRIPT_TOKEN, "") ?: ""
+
+    fun saveScriptToken(value: String) {
+        prefs.edit().putString(KEY_SCRIPT_TOKEN, value).apply()
+    }
 
     fun loadIgnored(): List<String> {
         val raw = prefs.getString(KEY_IGNORED, null) ?: return emptyList()
@@ -94,10 +119,15 @@ class Storage(context: Context) {
         prefs.edit().putString(KEY_NAV_GLASS, value.toString()).apply()
     }
 
+    private val bundleKeys = listOf(
+        KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME,
+        KEY_NAV_GLASS, KEY_SCRIPT_URL, KEY_SCRIPT_TOKEN
+    )
+
     /** Bundles every raw pref string as-is into one JSON file — survives reinstalls. */
     fun exportBundle(): String {
         val obj = JSONObject()
-        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME, KEY_NAV_GLASS).forEach { key ->
+        bundleKeys.forEach { key ->
             val raw = prefs.getString(key, null)
             if (raw != null) obj.put(key, raw)
         }
@@ -107,7 +137,7 @@ class Storage(context: Context) {
     fun importBundle(json: String) {
         val obj = JSONObject(json)
         val editor = prefs.edit()
-        listOf(KEY_PARTS, KEY_LOCATIONS, KEY_MODELS, KEY_SHEETS, KEY_IGNORED, KEY_THEME, KEY_NAV_GLASS).forEach { key ->
+        bundleKeys.forEach { key ->
             if (obj.has(key) && !obj.isNull(key)) editor.putString(key, obj.getString(key))
         }
         editor.apply()
@@ -121,5 +151,7 @@ class Storage(context: Context) {
         const val KEY_IGNORED = "partsPickerIgnoredDuplicates"
         const val KEY_THEME = "partsPickerTheme"
         const val KEY_NAV_GLASS = "partsPickerNavGlass"
+        const val KEY_SCRIPT_URL = "partsPickerScriptUrl"
+        const val KEY_SCRIPT_TOKEN = "partsPickerScriptToken"
     }
 }
