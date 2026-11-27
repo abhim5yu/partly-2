@@ -72,7 +72,11 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         storage.saveTheme(mode)
     }
 
-    /** Live-updates the nav bar transparency while the slider is dragged (not saved yet). */
+    /**
+     * Live-updates the nav bar transparency while the slider is dragged (not saved yet).
+     * @JvmName avoids a JVM clash with the property's own (private) setter.
+     */
+    @JvmName("applyNavTransparency")
     fun setNavTransparency(value: Float) {
         navTransparency = value.coerceIn(0f, 1f)
     }
