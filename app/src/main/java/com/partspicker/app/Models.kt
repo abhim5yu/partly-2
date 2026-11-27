@@ -6,8 +6,12 @@ data class LocationItem(val id: String, val value: String, val group: String)
 
 data class ModelCode(val id: String, val code: String, val model: String)
 
-/** One input box for a sheet: its display name and which sheet column (1 = A, 2 = B, ...) it fills. */
-data class SheetField(val label: String, val col: Int)
+/**
+ * One input box for a sheet: its display name, which sheet column (1 = A, 2 = B, ...) it
+ * fills, and a stable id used only to track it through the drag-to-reorder grid (never
+ * shown anywhere in the UI).
+ */
+data class SheetField(val label: String, val col: Int, val id: String = PartsLogic.makeId())
 
 /** A Google Sheet shown in the Sheets section (Sheet1, Sheet2, etc.) plus its input boxes. */
 data class SheetLink(
