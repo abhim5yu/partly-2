@@ -52,6 +52,10 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
     // --- Google Sheets (through the pasted Apps Script) ---
     var scriptUrl by mutableStateOf(""); private set
     var scriptToken by mutableStateOf(""); private set
+
+    /** null = not checked yet, true = the script answered fine, false = there's a connection problem. */
+    var scriptOk by mutableStateOf<Boolean?>(null); private set
+    var scriptNote by mutableStateOf(""); private set
     var sheetData by mutableStateOf<SheetData?>(null); private set
     var sheetDataFor by mutableStateOf<String?>(null); private set
     var sheetLoading by mutableStateOf(false); private set
@@ -205,7 +209,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         storage.saveSheetLinks(sheetLinks)
     }
 
-    /** Replaces the input boxes (name + column) of one sheet. */
+    /** Replaces the input boxes (name, column and grid position) of one sheet. */
     fun updateSheetFields(id: String, fields: List<SheetField>) {
         sheetLinks = sheetLinks.map { if (it.id == id) it.copy(fields = fields) else it }
         storage.saveSheetLinks(sheetLinks)
@@ -213,9 +217,16 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------------- Google Sheets bridge ----------------
 
+    /**
+     * Saves a new/changed Apps Script web-app URL. Only the link changes — sheets, boxes and
+     * layouts are left exactly as they are. The connection is re-tested straight away.
+     */
     fun saveScriptUrl(url: String) {
         scriptUrl = url.trim()
         storage.saveScriptUrl(scriptUrl)
+        scriptOk = null
+        scriptNote = ""
+        testScript()
     }
 
     /** Creates the private token the first time it's needed; the same one is baked into the copied script. */
@@ -225,6 +236,46 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             storage.saveScriptToken(scriptToken)
         }
         return scriptToken
+    }
+
+    private fun noteScript(ok: Boolean, note: String) {
+        scriptOk = ok
+        scriptNote = note
+    }
+
+    /** Network failures and a wrong token mean the connection is broken; sheet-level errors don't. */
+    private fun isConnectionProblem(e: Exception): Boolean {
+        if (e is java.io.IOException) return true
+        val m = e.message.orEmpty()
+        return m.startsWith("Wrong token") || m.contains("didn't answer properly")
+    }
+
+    /**
+     * Quick health check of the Google connection (the status dot). Asks the script for a sheet
+     * that doesn't exist: any JSON answer other than "Wrong token" proves the script is reachable
+     * and the token matches. Nothing is read or written.
+     */
+    fun testScript() {
+        if (scriptUrl.isBlank()) {
+            noteScript(false, "Not connected yet.")
+            return
+        }
+        val token = scriptToken
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val res = callScript(mapOf("token" to token, "action" to "read", "id" to "", "gid" to ""))
+                val err = res.optString("error", "")
+                withContext(Dispatchers.Main) {
+                    if (err.startsWith("Wrong token")) {
+                        noteScript(false, "The script's token doesn't match. Tap Copy script, paste it into your script again and redeploy.")
+                    } else {
+                        noteScript(true, "")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { noteScript(false, friendlyError(e)) }
+            }
+        }
     }
 
     private fun reportSheetOp(text: String, failed: Boolean) {
@@ -288,7 +339,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (!keepStatus) reportSheetOp("", false)
         if (scriptUrl.isBlank()) {
-            reportSheetOp("Connect Google first (Sheets screen → Google connection).", true)
+            reportSheetOp("Connect Google first (Sheets screen → status dot).", true)
             return
         }
         val id = sheetIdOf(sheet.url)
@@ -313,11 +364,13 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
                     sheetData = data
                     sheetDataFor = sheet.id
                     sheetLoading = false
+                    noteScript(true, "")
                     seedFieldsIfNeeded(sheet.id, values)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     sheetLoading = false
+                    if (isConnectionProblem(e)) noteScript(false, friendlyError(e)) else noteScript(true, "")
                     reportSheetOp(friendlyError(e), true)
                 }
             }
@@ -330,7 +383,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun addToSheet(sheet: SheetLink, values: List<String>, onResult: (Boolean) -> Unit) {
         if (scriptUrl.isBlank()) {
-            reportSheetOp("Connect Google first (Sheets screen → Google connection).", true)
+            reportSheetOp("Connect Google first (Sheets screen → status dot).", true)
             onResult(false)
             return
         }
@@ -369,6 +422,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.Main) {
                     addingToSheet = false
                     lastAddedRow = row
+                    noteScript(true, "")
                     reportSheetOp("Added to row $row.", false)
                     onResult(true)
                     loadSheet(sheet, keepStatus = true)
@@ -376,6 +430,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     addingToSheet = false
+                    if (isConnectionProblem(e)) noteScript(false, friendlyError(e)) else noteScript(true, "")
                     reportSheetOp(friendlyError(e), true)
                     onResult(false)
                 }

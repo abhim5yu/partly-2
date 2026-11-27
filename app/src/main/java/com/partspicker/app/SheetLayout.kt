@@ -1,10 +1,10 @@
 package com.partspicker.app
 
-/** The input boxes live on a grid this many cells wide... */
-const val GRID_COLS = 5
+/** The input boxes live on a grid this many cells wide (even, so halves/quarters line up)... */
+const val GRID_COLS = 8
 
 /** ...and at least this many rows tall (it grows if there are more boxes than fit). */
-const val GRID_ROWS = 7
+const val GRID_ROWS = 10
 
 fun SheetField.isPlaced(): Boolean = gx >= 0 && gw > 0
 
@@ -72,7 +72,7 @@ fun List<SheetField>.laidOut(): List<SheetField> {
     for (idx in out.indices) {
         if (out[idx].isPlaced()) continue
         val placed = out.filter { it.isPlaced() }
-        val w = 2
+        val w = 3
         val (x, y) = findSpot(placed, w, 1)
         out[idx] = out[idx].copy(gx = x, gy = y, gw = w, gh = 1)
     }

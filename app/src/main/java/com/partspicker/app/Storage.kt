@@ -56,19 +56,24 @@ class Storage(context: Context) {
         JSONObject().put("id", it.id).put("code", it.code).put("model", it.model)
     })
 
-    /** Google Sheets used for stock taking — "Sheet1", "Sheet2", etc. — with their input boxes. */
+    /**
+     * Google Sheets used for stock taking — "Sheet1", "Sheet2", etc. — with their input boxes.
+     * Box layouts saved before the grid became 8 x 10 (no "gv" marker) were laid out on the old
+     * 5-column grid, so they're treated as not placed and get a fresh automatic layout.
+     */
     fun loadSheetLinks(): List<SheetLink> = readArray(KEY_SHEETS) { o ->
         val fa = o.optJSONArray("fields")
         val fields = if (fa == null) emptyList() else List(fa.length()) { i ->
             val f = fa.getJSONObject(i)
+            val currentGrid = f.has("gv")
             SheetField(
                 label = f.optString("label", ""),
                 col = f.optInt("col", 1),
                 id = f.optString("id", PartsLogic.makeId()),
-                gx = f.optInt("gx", -1),
-                gy = f.optInt("gy", 0),
-                gw = f.optInt("gw", 0),
-                gh = f.optInt("gh", 1)
+                gx = if (currentGrid) f.optInt("gx", -1) else -1,
+                gy = if (currentGrid) f.optInt("gy", 0) else 0,
+                gw = if (currentGrid) f.optInt("gw", 0) else 0,
+                gh = if (currentGrid) f.optInt("gh", 1) else 1
             )
         }
         SheetLink(o.getString("id"), o.getString("name"), o.getString("url"), fields)
@@ -84,6 +89,7 @@ class Storage(context: Context) {
                     .put("label", f.label)
                     .put("col", f.col)
                     .put("id", f.id)
+                    .put("gv", GRID_VERSION)
                     .put("gx", f.gx)
                     .put("gy", f.gy)
                     .put("gw", f.gw)
@@ -168,5 +174,8 @@ class Storage(context: Context) {
         const val KEY_NAV_GLASS = "partsPickerNavGlass"
         const val KEY_SCRIPT_URL = "partsPickerScriptUrl"
         const val KEY_SCRIPT_TOKEN = "partsPickerScriptToken"
+
+        /** Bump when the box grid's size changes (2 = 8 columns x 10 rows). */
+        const val GRID_VERSION = 2
     }
 }
