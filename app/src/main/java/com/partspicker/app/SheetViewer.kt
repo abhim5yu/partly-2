@@ -1,14 +1,12 @@
 package com.partspicker.app
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateOffsetAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,22 +24,21 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,7 +60,6 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -85,12 +81,10 @@ private data class SheetRowView(val rowNum: Int, val cells: List<String>)
 // Items before the first table row: entry card, status line, table header.
 private const val TABLE_START = 3
 
-private const val GRID_COLS = 2
-
 /**
  * A Google Sheet in the app's own UI: input boxes (named by you, each linked to one sheet
- * column, arranged like phone widgets) that add an entry to the sheet, and the latest
- * sheet contents as a table.
+ * column, arranged on a 5 x 7 grid) that add an entry to the sheet, and the latest sheet
+ * contents as a table.
  */
 @Composable
 fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) {
@@ -101,7 +95,8 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
     val inputs = remember { mutableStateMapOf<String, String>() }
     var addTick by remember { mutableIntStateOf(0) }
     var editing by rememberSaveable { mutableStateOf(false) }
-    var draft by remember { mutableStateOf(sheet.fields) }
+    val fields = remember(sheet.fields) { sheet.fields.laidOut() }
+    var draft by remember { mutableStateOf(fields) }
 
     BackHandler(onBack = onBack)
 
@@ -113,7 +108,6 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
     }
 
     val data = if (vm.sheetDataFor == sheet.id) vm.sheetData else null
-    val fields = sheet.fields
     val headers = data?.values?.firstOrNull().orEmpty()
     val connected = vm.scriptUrl.isNotBlank()
 
@@ -184,18 +178,20 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
                             onDraft = { draft = it },
                             onToggleEdit = {
                                 if (editing) {
-                                    vm.updateSheetFields(sheet.id, draft.filter { it.label.isNotBlank() && it.col > 0 })
+                                    vm.updateSheetFields(
+                                        sheet.id,
+                                        draft.filter { it.label.isNotBlank() && it.col > 0 }.laidOut()
+                                    )
                                     editing = false
                                 } else {
-                                    draft = sheet.fields
+                                    draft = fields
                                     editing = true
                                 }
                             },
                             adding = vm.addingToSheet,
                             firstFocus = firstFocus,
                             onMoveNext = { focus.moveFocus(FocusDirection.Next) },
-                            onSubmit = submit,
-                            onReorder = { vm.updateSheetFields(sheet.id, it) }
+                            onSubmit = submit
                         )
                     }
                 }
@@ -287,8 +283,7 @@ private fun SheetEntryCard(
     adding: Boolean,
     firstFocus: FocusRequester,
     onMoveNext: () -> Unit,
-    onSubmit: () -> Unit,
-    onReorder: (List<SheetField>) -> Unit
+    onSubmit: () -> Unit
 ) {
     val c = LocalAppColors.current
     var pickerFor by remember { mutableStateOf<Int?>(null) }
@@ -319,7 +314,16 @@ private fun SheetEntryCard(
         }
 
         if (editing) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionLabel("Layout · 5 × 7 grid", Modifier.padding(horizontal = 4.dp))
+                LayoutGridEditor(fields = draft, onChange = onDraft)
+                Text(
+                    "Press and hold a box to move it. Drag its corner dot to resize.",
+                    Modifier.padding(horizontal = 4.dp),
+                    color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                )
+
+                SectionLabel("Boxes", Modifier.padding(start = 4.dp, top = 6.dp))
                 draft.forEachIndexed { i, f ->
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
@@ -338,32 +342,35 @@ private fun SheetEntryCard(
                                 background = c.surface2,
                                 horizontalPadding = 16.dp
                             )
+                            // Fixed width so every row lines up in a straight column.
                             Box(
                                 Modifier
-                                    .widthIn(max = 124.dp)
+                                    .width(116.dp)
                                     .height(48.dp)
                                     .clip(PillShape)
                                     .background(if (pickerFor == i) c.accent.copy(alpha = 0.18f) else c.surface2)
                                     .clickable { pickerFor = if (pickerFor == i) null else i }
-                                    .padding(horizontal = 14.dp),
+                                    .padding(horizontal = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     if (f.col > 0) {
                                         colLetter(f.col) + " · " + (headers.getOrNull(f.col - 1)?.ifBlank { null } ?: "column")
                                     } else "Link",
-                                    color = c.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                    color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            IconBtn(
-                                Icons.Filled.Close, "Remove box",
-                                {
-                                    pickerFor = null
-                                    onDraft(draft.filterIndexed { j, _ -> j != i })
-                                },
-                                tint = c.error
-                            )
+                            Box(Modifier.width(40.dp), contentAlignment = Alignment.Center) {
+                                IconBtn(
+                                    Icons.Filled.Close, "Remove box",
+                                    {
+                                        pickerFor = null
+                                        onDraft(draft.filterIndexed { j, _ -> j != i })
+                                    },
+                                    tint = c.error
+                                )
+                            }
                         }
                         if (pickerFor == i) {
                             Column(
@@ -406,7 +413,7 @@ private fun SheetEntryCard(
                         val nextCol = (1..columns.size).firstOrNull { it !in used }
                             ?: ((draft.maxOfOrNull { it.col } ?: 0) + 1)
                         val label = headers.getOrNull(nextCol - 1)?.trim()?.ifBlank { null } ?: "Box ${draft.size + 1}"
-                        onDraft(draft + SheetField(label, nextCol))
+                        onDraft((draft + SheetField(label, nextCol)).laidOut())
                     },
                     modifier = Modifier.fillMaxWidth(),
                     container = c.surface2, content = c.text
@@ -420,6 +427,7 @@ private fun SheetEntryCard(
                                 headers.withIndex()
                                     .filter { it.value.isNotBlank() }
                                     .map { SheetField(it.value.trim(), it.index + 1) }
+                                    .laidOut()
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -438,21 +446,13 @@ private fun SheetEntryCard(
                     color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium
                 )
             } else {
-                BoxFieldGrid(
+                EntryBoxes(
                     fields = fields,
                     inputs = inputs,
                     firstFocus = firstFocus,
                     onMoveNext = onMoveNext,
-                    onSubmit = onSubmit,
-                    onReorder = onReorder
+                    onSubmit = onSubmit
                 )
-                if (fields.size > 1) {
-                    Text(
-                        "Press and hold a box's title to move it.",
-                        Modifier.padding(horizontal = 4.dp),
-                        color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium
-                    )
-                }
                 PillButton(
                     if (adding) "Adding…" else "Add to sheet",
                     onClick = onSubmit,
@@ -464,130 +464,41 @@ private fun SheetEntryCard(
     }
 }
 
-/** Slot geometry for the 2-column box grid (all in pixels). */
-private data class GridMetrics(val w: Float, val h: Float, val g: Float) {
-    fun slot(index: Int): Offset = Offset((index % GRID_COLS) * (w + g), (index / GRID_COLS) * (h + g))
-
-    /** Which slot a point (the dragged tile's centre) is over. */
-    fun indexAt(p: Offset, count: Int): Int {
-        val col = (p.x / (w + g)).toInt().coerceIn(0, GRID_COLS - 1)
-        val rowCount = (count + GRID_COLS - 1) / GRID_COLS
-        val row = (p.y / (h + g)).toInt().coerceIn(0, (rowCount - 1).coerceAtLeast(0))
-        return (row * GRID_COLS + col).coerceIn(0, (count - 1).coerceAtLeast(0))
-    }
-}
-
-/**
- * The input boxes as a 2-column grid you can rearrange like phone widgets: press and hold a
- * box's title, drag it over another slot (the others slide out of the way live), let go to
- * drop it. The new order is saved.
- */
+/** The input boxes as plain pills, placed on the 5-column grid exactly as arranged. */
 @Composable
-private fun BoxFieldGrid(
+private fun EntryBoxes(
     fields: List<SheetField>,
     inputs: SnapshotStateMap<String, String>,
     firstFocus: FocusRequester,
     onMoveNext: () -> Unit,
-    onSubmit: () -> Unit,
-    onReorder: (List<SheetField>) -> Unit
+    onSubmit: () -> Unit
 ) {
-    val density = LocalDensity.current
-    val haptic = LocalHapticFeedback.current
-    var live by remember { mutableStateOf<List<SheetField>?>(null) }
-    var draggingId by remember { mutableStateOf<String?>(null) }
-    var fingerPos by remember { mutableStateOf(Offset.Zero) }
-
-    val fieldsNow by rememberUpdatedState(fields)
-    val onReorderNow by rememberUpdatedState(onReorder)
-
-    val shown = live ?: fields
-    val gap = 10.dp
-    val tileH = 100.dp
-    val rowCount = (shown.size + GRID_COLS - 1) / GRID_COLS
-    val totalH = tileH * rowCount + gap * (rowCount - 1).coerceAtLeast(0)
+    // Row-major so the keyboard's Next button walks left-to-right, top-to-bottom.
+    val ordered = fields.sortedWith(compareBy<SheetField>({ it.gy }, { it.gx }))
+    val rowsUsed = fields.maxOfOrNull { it.gy + it.gh } ?: 0
+    val gap = 8.dp
+    val rowH = 52.dp
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val tileW = (maxWidth - gap) / GRID_COLS
-        val metrics by rememberUpdatedState(
-            GridMetrics(
-                w = with(density) { tileW.toPx() },
-                h = with(density) { tileH.toPx() },
-                g = with(density) { gap.toPx() }
-            )
-        )
-
-        Box(Modifier.fillMaxWidth().height(totalH)) {
-            shown.forEachIndexed { index, f ->
+        val cellW = (maxWidth - gap * (GRID_COLS - 1)) / GRID_COLS
+        Box(Modifier.fillMaxWidth().height(rowH * rowsUsed + gap * (rowsUsed - 1).coerceAtLeast(0))) {
+            ordered.forEachIndexed { i, f ->
                 key(f.id) {
-                    val dragged = draggingId == f.id
-                    val target = if (dragged) fingerPos else metrics.slot(index)
-                    val spec: AnimationSpec<Offset> =
-                        if (dragged) snap() else spring(stiffness = Spring.StiffnessMediumLow)
-                    val pos by animateOffsetAsState(target, spec, label = "tile")
-                    val raise by animateFloatAsState(if (dragged) 1f else 0f, label = "tileRaise")
-
-                    FieldTile(
-                        field = f,
+                    val narrow = f.gw <= 1
+                    val boxH = rowH * f.gh + gap * (f.gh - 1)
+                    PillField(
                         value = inputs[f.id] ?: "",
-                        onValue = { inputs[f.id] = it },
-                        imeAction = if (index == shown.lastIndex) ImeAction.Done else ImeAction.Next,
-                        onImeAction = { if (index == shown.lastIndex) onSubmit() else onMoveNext() },
-                        focusRequester = if (index == 0) firstFocus else null,
+                        onValueChange = { inputs[f.id] = it },
+                        placeholder = f.label,
                         modifier = Modifier
-                            .offset { IntOffset(pos.x.roundToInt(), pos.y.roundToInt()) }
-                            .size(tileW, tileH)
-                            .zIndex(if (dragged || raise > 0.01f) 1f else 0f)
-                            .graphicsLayer {
-                                val s = 1f + 0.05f * raise
-                                scaleX = s
-                                scaleY = s
-                                shadowElevation = 24f * raise
-                                shape = Radius
-                                clip = false
-                            },
-                        handleModifier = Modifier.pointerInput(f.id) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    val list = live ?: fieldsNow
-                                    val i = list.indexOfFirst { it.id == f.id }
-                                    if (i >= 0) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        live = list
-                                        fingerPos = metrics.slot(i)
-                                        draggingId = f.id
-                                    }
-                                },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    val list = live
-                                    if (draggingId == f.id && list != null) {
-                                        fingerPos += amount
-                                        val from = list.indexOfFirst { it.id == f.id }
-                                        val to = metrics.indexAt(
-                                            fingerPos + Offset(metrics.w / 2f, metrics.h / 2f),
-                                            list.size
-                                        )
-                                        if (from >= 0 && to != from) {
-                                            val next = list.toMutableList()
-                                            next.add(to, next.removeAt(from))
-                                            live = next
-                                        }
-                                    }
-                                },
-                                onDragEnd = {
-                                    val list = live
-                                    draggingId = null
-                                    if (list != null && list.map { it.id } != fieldsNow.map { it.id }) {
-                                        onReorderNow(list)
-                                    }
-                                    live = null
-                                },
-                                onDragCancel = {
-                                    draggingId = null
-                                    live = null
-                                }
-                            )
-                        }
+                            .offset(x = (cellW + gap) * f.gx, y = (rowH + gap) * f.gy)
+                            .width(cellW * f.gw + gap * (f.gw - 1)),
+                        height = boxH,
+                        fontSize = if (narrow) 13.sp else 16.sp,
+                        horizontalPadding = if (narrow) 8.dp else 18.dp,
+                        imeAction = if (i == ordered.lastIndex) ImeAction.Done else ImeAction.Next,
+                        onImeAction = { if (i == ordered.lastIndex) onSubmit() else onMoveNext() },
+                        focusRequester = if (i == 0) firstFocus else null
                     )
                 }
             }
@@ -595,47 +506,183 @@ private fun BoxFieldGrid(
     }
 }
 
+/** Pixel geometry of the layout editor's grid. */
+private data class EditorMetrics(val cw: Float, val rh: Float, val g: Float) {
+    fun pos(x: Int, y: Int): Offset = Offset(x * (cw + g), y * (rh + g))
+}
+
+/**
+ * The 5 × 7 grid editor. Press and hold a box to move it; drag the dot in its corner to
+ * resize it. Boxes snap to cells and can't overlap — a move or resize that would hit another
+ * box simply doesn't go through.
+ */
 @Composable
-private fun FieldTile(
-    field: SheetField,
-    value: String,
-    onValue: (String) -> Unit,
-    imeAction: ImeAction,
-    onImeAction: () -> Unit,
-    focusRequester: FocusRequester?,
-    modifier: Modifier,
-    handleModifier: Modifier
-) {
+private fun LayoutGridEditor(fields: List<SheetField>, onChange: (List<SheetField>) -> Unit) {
     val c = LocalAppColors.current
-    Column(
-        modifier
-            .clip(Radius)
-            .background(c.surface2)
-            .padding(start = 10.dp, end = 10.dp, bottom = 10.dp)
-    ) {
-        // The title strip is the drag handle (the text field itself keeps normal typing/selection).
-        Row(
-            handleModifier.fillMaxWidth().height(36.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(Modifier.weight(1f)) {
-                SectionLabel(field.label)
-            }
-            Icon(Icons.Filled.DragIndicator, contentDescription = null, tint = c.muted, modifier = Modifier.size(18.dp))
-        }
-        PillField(
-            value = value,
-            onValueChange = onValue,
-            placeholder = "Type here",
-            modifier = Modifier.fillMaxWidth(),
-            height = 48.dp,
-            fontSize = 16.sp,
-            horizontalPadding = 14.dp,
-            background = c.surface,
-            imeAction = imeAction,
-            onImeAction = onImeAction,
-            focusRequester = focusRequester
+    val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    var live by remember { mutableStateOf<List<SheetField>?>(null) }
+    var activeId by remember { mutableStateOf<String?>(null) }
+    val fieldsNow by rememberUpdatedState(fields)
+    val onChangeNow by rememberUpdatedState(onChange)
+
+    val shown = live ?: fields
+    val rowsShown = maxOf(GRID_ROWS, shown.maxOfOrNull { it.gy + it.gh } ?: 0)
+    val gap = 6.dp
+    val rowH = 40.dp
+    val totalH = rowH * rowsShown + gap * (rowsShown - 1)
+
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val cellW = (maxWidth - gap * (GRID_COLS - 1)) / GRID_COLS
+        val m by rememberUpdatedState(
+            EditorMetrics(
+                cw = with(density) { cellW.toPx() },
+                rh = with(density) { rowH.toPx() },
+                g = with(density) { gap.toPx() }
+            )
         )
+
+        val commit: () -> Unit = {
+            val list = live
+            activeId = null
+            if (list != null && list != fieldsNow) onChangeNow(list)
+            live = null
+        }
+
+        Box(Modifier.fillMaxWidth().height(totalH)) {
+            // the empty cells
+            for (r in 0 until rowsShown) {
+                for (col in 0 until GRID_COLS) {
+                    Box(
+                        Modifier
+                            .offset(x = (cellW + gap) * col, y = (rowH + gap) * r)
+                            .size(cellW, rowH)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(c.surface2.copy(alpha = 0.7f))
+                    )
+                }
+            }
+
+            shown.forEach { f ->
+                key(f.id) {
+                    val active = activeId == f.id
+                    val pos by animateOffsetAsState(
+                        m.pos(f.gx, f.gy),
+                        spring(stiffness = Spring.StiffnessMedium),
+                        label = "editorTile"
+                    )
+                    val wDp = cellW * f.gw + gap * (f.gw - 1)
+                    val hDp = rowH * f.gh + gap * (f.gh - 1)
+
+                    Box(
+                        Modifier
+                            .offset { IntOffset(pos.x.roundToInt(), pos.y.roundToInt()) }
+                            .size(wDp, hDp)
+                            .zIndex(if (active) 2f else 1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (active) c.accent else c.accent.copy(alpha = 0.30f))
+                            .pointerInput(f.id) {
+                                var origin = Offset.Zero
+                                var acc = Offset.Zero
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        val base = live ?: fieldsNow
+                                        val cur = base.firstOrNull { b -> b.id == f.id }
+                                        if (cur != null) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            live = base
+                                            origin = m.pos(cur.gx, cur.gy)
+                                            acc = Offset.Zero
+                                            activeId = f.id
+                                        }
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        val list = live
+                                        if (activeId == f.id && list != null) {
+                                            acc += amount
+                                            val cur = list.first { b -> b.id == f.id }
+                                            val p = origin + acc
+                                            val maxRows = maxOf(GRID_ROWS, list.maxOf { b -> b.gy + b.gh })
+                                            val nx = (p.x / (m.cw + m.g)).roundToInt().coerceIn(0, GRID_COLS - cur.gw)
+                                            val ny = (p.y / (m.rh + m.g)).roundToInt().coerceIn(0, maxRows - cur.gh)
+                                            if ((nx != cur.gx || ny != cur.gy) &&
+                                                isFree(list, f.id, nx, ny, cur.gw, cur.gh)
+                                            ) {
+                                                live = list.map { b -> if (b.id == f.id) b.copy(gx = nx, gy = ny) else b }
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = { commit() },
+                                    onDragCancel = { commit() }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            f.label,
+                            Modifier.padding(horizontal = 10.dp),
+                            color = if (active) c.onAccent else c.text,
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        // resize handle (bottom-right corner)
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(28.dp)
+                                .pointerInput(f.id) {
+                                    var base = Offset.Zero
+                                    var acc = Offset.Zero
+                                    detectDragGestures(
+                                        onDragStart = {
+                                            val start = live ?: fieldsNow
+                                            val cur = start.firstOrNull { b -> b.id == f.id }
+                                            if (cur != null) {
+                                                live = start
+                                                base = Offset(
+                                                    cur.gw * m.cw + (cur.gw - 1) * m.g,
+                                                    cur.gh * m.rh + (cur.gh - 1) * m.g
+                                                )
+                                                acc = Offset.Zero
+                                                activeId = f.id
+                                            }
+                                        },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            val list = live
+                                            if (activeId == f.id && list != null) {
+                                                acc += amount
+                                                val cur = list.first { b -> b.id == f.id }
+                                                val maxRows = maxOf(GRID_ROWS, list.maxOf { b -> b.gy + b.gh })
+                                                val nw = ((base.x + acc.x + m.g) / (m.cw + m.g)).roundToInt()
+                                                    .coerceIn(1, GRID_COLS - cur.gx)
+                                                val nh = ((base.y + acc.y + m.g) / (m.rh + m.g)).roundToInt()
+                                                    .coerceIn(1, maxRows - cur.gy)
+                                                if ((nw != cur.gw || nh != cur.gh) &&
+                                                    isFree(list, f.id, cur.gx, cur.gy, nw, nh)
+                                                ) {
+                                                    live = list.map { b -> if (b.id == f.id) b.copy(gw = nw, gh = nh) else b }
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = { commit() },
+                                        onDragCancel = { commit() }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (active) c.onAccent else c.text.copy(alpha = 0.7f))
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -653,7 +700,12 @@ private fun SheetTableHeader(labels: List<String>) {
         ) {
             Row(Modifier.padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 12.dp)) {
                 labels.forEachIndexed { i, l ->
-                    SectionLabel(l, Modifier.weight(if (i == 0) W_FIRST else 1f).padding(end = 6.dp))
+                    Text(
+                        l.uppercase(),
+                        Modifier.weight(if (i == 0) W_FIRST else 1f).padding(end = 6.dp),
+                        color = c.muted, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             HorizontalDivider(color = c.line)

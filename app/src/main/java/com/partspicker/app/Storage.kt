@@ -61,7 +61,15 @@ class Storage(context: Context) {
         val fa = o.optJSONArray("fields")
         val fields = if (fa == null) emptyList() else List(fa.length()) { i ->
             val f = fa.getJSONObject(i)
-            SheetField(f.optString("label", ""), f.optInt("col", 1), f.optString("id", PartsLogic.makeId()))
+            SheetField(
+                label = f.optString("label", ""),
+                col = f.optInt("col", 1),
+                id = f.optString("id", PartsLogic.makeId()),
+                gx = f.optInt("gx", -1),
+                gy = f.optInt("gy", 0),
+                gw = f.optInt("gw", 0),
+                gh = f.optInt("gh", 1)
+            )
         }
         SheetLink(o.getString("id"), o.getString("name"), o.getString("url"), fields)
     } ?: emptyList()
@@ -72,7 +80,14 @@ class Storage(context: Context) {
             .put("name", s.name)
             .put("url", s.url)
             .put("fields", JSONArray(s.fields.map { f ->
-                JSONObject().put("label", f.label).put("col", f.col).put("id", f.id)
+                JSONObject()
+                    .put("label", f.label)
+                    .put("col", f.col)
+                    .put("id", f.id)
+                    .put("gx", f.gx)
+                    .put("gy", f.gy)
+                    .put("gw", f.gw)
+                    .put("gh", f.gh)
             }))
     })
 
