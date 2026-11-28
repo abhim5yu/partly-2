@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -252,12 +253,16 @@ fun PillField(
                 }
                 Box(Modifier.weight(1f), contentAlignment = if (centered) Alignment.Center else Alignment.CenterStart) {
                     if (value.isEmpty()) {
+                        // Match the real field's size so a shrunk-to-fit box (e.g. a small grid
+                        // cell) doesn't show a placeholder that's bigger than the box itself —
+                        // and ellipsize instead of silently clipping when it's still too long.
                         Text(
                             placeholder,
                             color = c.muted,
-                            fontSize = 16.sp,
+                            fontSize = fontSize,
                             fontWeight = FontWeight.Normal,
-                            maxLines = if (singleLine) 1 else Int.MAX_VALUE
+                            maxLines = if (singleLine) 1 else Int.MAX_VALUE,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     inner()
