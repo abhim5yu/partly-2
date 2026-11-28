@@ -438,6 +438,117 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Writes one value into a single cell on its own fresh row — e.g. a date heading
+     * dropped in before the next batch of stock-take entries. [col] is 1-based (A = 1).
+     * That row is then off-limits to the next [addToSheet] call too, same as any other
+     * row with something in it.
+     */
+    fun addNote(sheet: SheetLink, col: Int, text: String, onResult: (Boolean) -> Unit) {
+        if (scriptUrl.isBlank()) {
+            reportSheetOp("Connect Google first (Sheets screen → status dot).", true)
+            onResult(false)
+            return
+        }
+        val id = sheetIdOf(sheet.url)
+        if (id == null) {
+            reportSheetOp("That doesn't look like a Google Sheets link.", true)
+            onResult(false)
+            return
+        }
+        val value = text.trim()
+        if (col <= 0 || value.isEmpty()) {
+            reportSheetOp("Pick a column and type something to add.", true)
+            onResult(false)
+            return
+        }
+        addingToSheet = true
+        reportSheetOp("", false)
+        val token = scriptToken
+        val gid = sheetGidOf(sheet.url) ?: ""
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val res = callScript(
+                    mapOf(
+                        "token" to token, "action" to "note", "id" to id, "gid" to gid,
+                        "col" to col.toString(), "text" to value
+                    )
+                )
+                if (!res.optBoolean("ok")) throw IllegalStateException(res.optString("error", "Unknown error"))
+                val row = res.optInt("row", -1)
+                withContext(Dispatchers.Main) {
+                    addingToSheet = false
+                    lastAddedRow = row
+                    noteScript(true, "")
+                    reportSheetOp("Added to row $row.", false)
+                    onResult(true)
+                    loadSheet(sheet, keepStatus = true)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    addingToSheet = false
+                    if (isConnectionProblem(e)) noteScript(false, friendlyError(e)) else noteScript(true, "")
+                    reportSheetOp(friendlyError(e), true)
+                    onResult(false)
+                }
+            }
+        }
+    }
+
+    /**
+     * Rewrites the boxed cells of a row that already exists in the sheet (tap a row to edit
+     * it), instead of finding a new free row the way [addToSheet] does. An emptied box
+     * clears that cell; formulas are still never touched.
+     */
+    fun updateSheetRow(sheet: SheetLink, row: Int, values: List<String>, onResult: (Boolean) -> Unit) {
+        if (scriptUrl.isBlank()) {
+            reportSheetOp("Connect Google first (Sheets screen → status dot).", true)
+            onResult(false)
+            return
+        }
+        val id = sheetIdOf(sheet.url)
+        if (id == null) {
+            reportSheetOp("That doesn't look like a Google Sheets link.", true)
+            onResult(false)
+            return
+        }
+        if (sheet.fields.isEmpty()) {
+            onResult(false)
+            return
+        }
+        addingToSheet = true
+        reportSheetOp("", false)
+        val token = scriptToken
+        val gid = sheetGidOf(sheet.url) ?: ""
+        val cols = JSONArray(sheet.fields.map { it.col }).toString()
+        val vals = JSONArray(values.map { it.trim() }).toString()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val res = callScript(
+                    mapOf(
+                        "token" to token, "action" to "update", "id" to id, "gid" to gid,
+                        "row" to row.toString(), "cols" to cols, "vals" to vals
+                    )
+                )
+                if (!res.optBoolean("ok")) throw IllegalStateException(res.optString("error", "Unknown error"))
+                withContext(Dispatchers.Main) {
+                    addingToSheet = false
+                    noteScript(true, "")
+                    reportSheetOp("Row $row updated.", false)
+                    onResult(true)
+                    loadSheet(sheet, keepStatus = true)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    addingToSheet = false
+                    if (isConnectionProblem(e)) noteScript(false, friendlyError(e)) else noteScript(true, "")
+                    reportSheetOp(friendlyError(e), true)
+                    onResult(false)
+                }
+            }
+        }
+    }
+
     // ---------------- Parts ----------------
 
     fun addPart() {
@@ -705,7 +816,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             }
             backupStatus = "Backup saved."
         } catch (e: Exception) {
-            backupStatus = "Export failed: ${e.message}"
+            backupStatus = "Export failed: ${'$'}{e.message}"
         }
     }
 
@@ -725,7 +836,7 @@ class PartsViewModel(app: Application) : AndroidViewModel(app) {
             scriptToken = storage.loadScriptToken()
             backupStatus = "Backup restored."
         } catch (e: Exception) {
-            backupStatus = "Restore failed: ${e.message}"
+            backupStatus = "Restore failed: ${'$'}{e.message}"
         }
     }
 }
