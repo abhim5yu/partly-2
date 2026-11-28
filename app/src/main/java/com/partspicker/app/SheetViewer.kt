@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -72,7 +71,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,23 +85,21 @@ private const val TABLE_START = 3
 
 /**
  * A Google Sheet in the app's own UI: input boxes (named by you, each linked to one sheet
- * column, arranged on an 8 x 10 grid) that add an entry to the sheet, and the latest sheet
- * contents as a table that scrolls sideways. The table button at the top opens the whole sheet.
+ * column, arranged on the boxes grid — see SheetLayout.kt for its size) that add an entry to
+ * the sheet, and the latest sheet contents as a table.
  */
 @Composable
 fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) {
     val c = LocalAppColors.current
     val focus = LocalFocusManager.current
     val listState = rememberLazyListState()
+    val tableScroll = rememberScrollState()
     val firstFocus = remember { FocusRequester() }
     val inputs = remember { mutableStateMapOf<String, String>() }
     var addTick by remember { mutableIntStateOf(0) }
     var editing by rememberSaveable { mutableStateOf(false) }
-    var showFull by rememberSaveable { mutableStateOf(false) }
     val fields = remember(sheet.fields) { sheet.fields.laidOut() }
     var draft by remember { mutableStateOf(fields) }
-    // One scroll state shared by the table header and every row, so they slide sideways together.
-    val tableScroll = rememberScrollState()
 
     BackHandler(onBack = onBack)
 
@@ -129,19 +125,10 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
         }
     }
 
-    // Each column is as wide as its longest text (within sensible limits) so nothing is squeezed.
-    val colWidths = remember(rows, fields) {
-        fields.mapIndexed { i, f ->
-            val longest = maxOf(f.label.length, rows.maxOfOrNull { it.cells.getOrNull(i)?.length ?: 0 } ?: 0)
-                .coerceAtMost(30)
-            (longest * 9 + 36).coerceIn(84, 260).dp
-        }
-    }
-
     // After an entry is added, jump to the row it landed in.
     LaunchedEffect(vm.lastAddedRow, rows) {
         val idx = rows.indexOfFirst { it.rowNum == vm.lastAddedRow }
-        if (idx >= 0 && !showFull) listState.animateScrollToItem(TABLE_START + idx)
+        if (idx >= 0) listState.animateScrollToItem(TABLE_START + idx)
     }
 
     val submit: () -> Unit = {
@@ -154,136 +141,119 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
         }
     }
 
-    if (showFull) {
-        FullSheetScreen(vm = vm, sheet = sheet, onClose = { showFull = false })
-    } else {
-        Column(Modifier.fillMaxSize().background(c.bg).statusBarsPadding()) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 10.dp, end = 14.dp, top = 10.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack, tint = c.text)
-                Column(Modifier.weight(1f).padding(start = 6.dp)) {
-                    Eyebrow(data?.tab?.takeIf { it.isNotBlank() } ?: "Google Sheet")
-                    Text(
-                        sheet.name,
-                        color = c.text, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-1).sp, maxLines = 1
-                    )
-                }
-                // View the whole sheet you're working on
-                IconBtn(
-                    Icons.Filled.TableChart, "View sheet",
-                    { showFull = true },
-                    tint = c.onAccent, background = c.accent
+    Column(Modifier.fillMaxSize().background(c.bg).statusBarsPadding()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 10.dp, end = 14.dp, top = 10.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack, tint = c.text)
+            Column(Modifier.weight(1f).padding(start = 6.dp)) {
+                Eyebrow(data?.tab?.takeIf { it.isNotBlank() } ?: "Google Sheet")
+                Text(
+                    sheet.name,
+                    color = c.text, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-1).sp, maxLines = 1
                 )
-                Box(Modifier.width(8.dp))
-                IconBtn(Icons.Filled.Refresh, "Refresh", { vm.loadSheet(sheet) }, tint = c.muted, background = c.surface2)
             }
-            if (vm.sheetLoading) {
-                LinearProgressIndicator(Modifier.fillMaxWidth(), color = c.accent, trackColor = c.surface2)
-            }
+            IconBtn(Icons.Filled.Refresh, "Refresh", { vm.loadSheet(sheet) }, tint = c.muted, background = c.surface2)
+        }
+        if (vm.sheetLoading) {
+            LinearProgressIndicator(Modifier.fillMaxWidth(), color = c.accent, trackColor = c.surface2)
+        }
 
-            LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth().imePadding(),
-                state = listState,
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                // 0: entry card
-                item {
-                    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 18.dp)) {
-                        if (!connected) {
-                            NotConnectedCard(onBack)
-                        } else {
-                            SheetEntryCard(
-                                fields = fields,
-                                headers = headers,
-                                inputs = inputs,
-                                editing = editing,
-                                draft = draft,
-                                onDraft = { draft = it },
-                                onToggleEdit = {
-                                    if (editing) {
-                                        vm.updateSheetFields(
-                                            sheet.id,
-                                            draft.filter { it.label.isNotBlank() && it.col > 0 }.laidOut()
-                                        )
-                                        editing = false
-                                    } else {
-                                        draft = fields
-                                        editing = true
-                                    }
-                                },
-                                adding = vm.addingToSheet,
-                                firstFocus = firstFocus,
-                                onMoveNext = { focus.moveFocus(FocusDirection.Next) },
-                                onSubmit = submit
-                            )
-                        }
-                    }
-                }
-
-                // 1: status + count
-                item {
-                    Column(Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp)) {
-                        StatusText(vm.sheetOpStatus, if (vm.sheetOpFailed) c.error else c.success)
-                        if (connected && data != null) {
-                            Text(
-                                "${rows.size} row${if (rows.size == 1) "" else "s"} filled",
-                                color = c.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
-                }
-
-                // 2: table header
-                item { SheetTableHeader(fields.map { it.label }, colWidths, tableScroll) }
-
-                if (rows.isEmpty()) {
-                    item {
-                        Box(Modifier.padding(horizontal = 16.dp)) {
-                            Box(
-                                Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 18.dp, vertical = 40.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    when {
-                                        !connected -> "Not connected yet."
-                                        data == null && vm.sheetLoading -> "Loading the sheet…"
-                                        data == null -> "No data yet — tap refresh."
-                                        else -> "Nothing filled in yet."
-                                    },
-                                    color = c.muted, fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
-
-                itemsIndexed(rows, key = { _, r -> r.rowNum }) { index, r ->
-                    SheetRow(
-                        row = r,
-                        widths = colWidths,
-                        scroll = tableScroll,
-                        highlight = r.rowNum == vm.lastAddedRow,
-                        showDivider = index != rows.lastIndex
-                    )
-                }
-
-                item {
-                    Box(Modifier.padding(horizontal = 16.dp)) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(12.dp)
-                                .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-                                .background(c.surface)
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth().imePadding(),
+            state = listState,
+            contentPadding = PaddingValues(bottom = 24.dp)
+        ) {
+            // 0: entry card
+            item {
+                Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 18.dp)) {
+                    if (!connected) {
+                        NotConnectedCard(onBack)
+                    } else {
+                        SheetEntryCard(
+                            fields = fields,
+                            headers = headers,
+                            inputs = inputs,
+                            editing = editing,
+                            draft = draft,
+                            onDraft = { draft = it },
+                            onToggleEdit = {
+                                if (editing) {
+                                    vm.updateSheetFields(
+                                        sheet.id,
+                                        draft.filter { it.label.isNotBlank() && it.col > 0 }.laidOut()
+                                    )
+                                    editing = false
+                                } else {
+                                    draft = fields
+                                    editing = true
+                                }
+                            },
+                            adding = vm.addingToSheet,
+                            firstFocus = firstFocus,
+                            onMoveNext = { focus.moveFocus(FocusDirection.Next) },
+                            onSubmit = submit
                         )
                     }
                 }
-
-                item { Box(Modifier.navigationBarsPadding()) }
             }
+
+            // 1: status + count
+            item {
+                Column(Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp)) {
+                    StatusText(vm.sheetOpStatus, if (vm.sheetOpFailed) c.error else c.success)
+                    if (connected && data != null) {
+                        Text(
+                            "${rows.size} row${if (rows.size == 1) "" else "s"} filled",
+                            color = c.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+
+            // 2: table header
+            item { SheetTableHeader(fields.map { it.label }, tableScroll) }
+
+            if (rows.isEmpty()) {
+                item {
+                    Box(Modifier.padding(horizontal = 16.dp)) {
+                        Box(
+                            Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 18.dp, vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                when {
+                                    !connected -> "Not connected yet."
+                                    data == null && vm.sheetLoading -> "Loading the sheet…"
+                                    data == null -> "No data yet — tap refresh."
+                                    else -> "Nothing filled in yet."
+                                },
+                                color = c.muted, fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            itemsIndexed(rows, key = { _, r -> r.rowNum }) { index, r ->
+                SheetRow(r, highlight = r.rowNum == vm.lastAddedRow, showDivider = index != rows.lastIndex, scrollState = tableScroll)
+            }
+
+            item {
+                Box(Modifier.padding(horizontal = 16.dp)) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(12.dp)
+                            .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
+                            .background(c.surface)
+                    )
+                }
+            }
+
+            item { Box(Modifier.navigationBarsPadding()) }
         }
     }
 }
@@ -297,7 +267,7 @@ private fun NotConnectedCard(onBack: () -> Unit) {
     ) {
         SectionLabel("Not connected")
         Text(
-            "Set up the Google connection first: go back to the Sheets list and tap the status dot in the top right.",
+            "Set up the Google connection first: go back to the Sheets list and follow the steps under \"Google connection\".",
             color = c.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 19.sp
         )
         PillButton("Back to Sheets", onBack, Modifier.fillMaxWidth())
@@ -497,7 +467,12 @@ private fun SheetEntryCard(
     }
 }
 
-/** The input boxes as plain pills, placed on the grid exactly as arranged. */
+/**
+ * The input boxes as pills, placed on the boxes grid exactly as arranged. They use a fixed,
+ * modest corner radius rather than the app's usual fully-rounded pill shape: a stadium shape
+ * on a box this small — especially a tall, narrow one from the resize handle — turns into an
+ * oval or even a circle instead of a readable rounded rectangle.
+ */
 @Composable
 private fun EntryBoxes(
     fields: List<SheetField>,
@@ -517,18 +492,8 @@ private fun EntryBoxes(
         Box(Modifier.fillMaxWidth().height(rowH * rowsUsed + gap * (rowsUsed - 1).coerceAtLeast(0))) {
             ordered.forEachIndexed { i, f ->
                 key(f.id) {
+                    val narrow = f.gw <= 2
                     val boxH = rowH * f.gh + gap * (f.gh - 1)
-                    // narrower boxes get a slightly smaller font and tighter padding so the name still fits
-                    val fontSize = when {
-                        f.gw <= 2 -> 13.sp
-                        f.gw <= 3 -> 15.sp
-                        else -> 16.sp
-                    }
-                    val sidePad = when {
-                        f.gw <= 2 -> 10.dp
-                        f.gw <= 3 -> 14.dp
-                        else -> 18.dp
-                    }
                     PillField(
                         value = inputs[f.id] ?: "",
                         onValueChange = { inputs[f.id] = it },
@@ -537,8 +502,9 @@ private fun EntryBoxes(
                             .offset(x = (cellW + gap) * f.gx, y = (rowH + gap) * f.gy)
                             .width(cellW * f.gw + gap * (f.gw - 1)),
                         height = boxH,
-                        fontSize = fontSize,
-                        horizontalPadding = sidePad,
+                        shape = RadiusS,
+                        fontSize = if (narrow) 13.sp else 16.sp,
+                        horizontalPadding = if (narrow) 10.dp else 18.dp,
                         imeAction = if (i == ordered.lastIndex) ImeAction.Done else ImeAction.Next,
                         onImeAction = { if (i == ordered.lastIndex) onSubmit() else onMoveNext() },
                         focusRequester = if (i == 0) firstFocus else null
@@ -555,9 +521,9 @@ private data class EditorMetrics(val cw: Float, val rh: Float, val g: Float) {
 }
 
 /**
- * The grid editor (8 columns x 10 rows). Press and hold a box to move it; drag the dot in its
- * corner to resize it. Boxes snap to cells and can't overlap — a move or resize that would hit
- * another box simply doesn't go through.
+ * The boxes grid editor (see SheetLayout.kt for GRID_COLS/GRID_ROWS). Press and hold a box to
+ * move it; drag the dot in its corner to resize it. Boxes snap to cells and can't overlap — a
+ * move or resize that would hit another box simply doesn't go through.
  */
 @Composable
 private fun LayoutGridEditor(fields: List<SheetField>, onChange: (List<SheetField>) -> Unit) {
@@ -571,8 +537,8 @@ private fun LayoutGridEditor(fields: List<SheetField>, onChange: (List<SheetFiel
 
     val shown = live ?: fields
     val rowsShown = maxOf(GRID_ROWS, shown.maxOfOrNull { it.gy + it.gh } ?: 0)
-    val gap = 5.dp
-    val rowH = 34.dp
+    val gap = 6.dp
+    val rowH = 40.dp
     val totalH = rowH * rowsShown + gap * (rowsShown - 1)
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -600,7 +566,7 @@ private fun LayoutGridEditor(fields: List<SheetField>, onChange: (List<SheetFiel
                         Modifier
                             .offset(x = (cellW + gap) * col, y = (rowH + gap) * r)
                             .size(cellW, rowH)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(c.surface2.copy(alpha = 0.7f))
                     )
                 }
@@ -622,7 +588,7 @@ private fun LayoutGridEditor(fields: List<SheetField>, onChange: (List<SheetFiel
                             .offset { IntOffset(pos.x.roundToInt(), pos.y.roundToInt()) }
                             .size(wDp, hDp)
                             .zIndex(if (active) 2f else 1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(if (active) c.accent else c.accent.copy(alpha = 0.30f))
                             .pointerInput(f.id) {
                                 var origin = Offset.Zero
@@ -664,7 +630,7 @@ private fun LayoutGridEditor(fields: List<SheetField>, onChange: (List<SheetFiel
                     ) {
                         Text(
                             f.label,
-                            Modifier.padding(horizontal = 8.dp),
+                            Modifier.padding(horizontal = 10.dp),
                             color = if (active) c.onAccent else c.text,
                             fontSize = 12.sp, fontWeight = FontWeight.Bold,
                             maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -729,8 +695,13 @@ private fun LayoutGridEditor(fields: List<SheetField>, onChange: (List<SheetFiel
     }
 }
 
+// Fixed column widths for the sheet table: it scrolls sideways instead of wrapping text
+// vertically, so every row stays a single readable line no matter how long a cell's text is.
+private val COL_FIRST_WIDTH = 150.dp
+private val COL_WIDTH = 120.dp
+
 @Composable
-private fun SheetTableHeader(labels: List<String>, widths: List<Dp>, scroll: ScrollState) {
+private fun SheetTableHeader(labels: List<String>, scrollState: ScrollState) {
     val c = LocalAppColors.current
     Box(Modifier.padding(horizontal = 16.dp)) {
         Column(
@@ -740,19 +711,18 @@ private fun SheetTableHeader(labels: List<String>, widths: List<Dp>, scroll: Scr
                 .background(c.surface)
         ) {
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(scroll).padding(top = 18.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                Modifier
+                    .horizontalScroll(scrollState)
+                    .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 12.dp)
             ) {
-                Box(Modifier.width(8.dp))
                 labels.forEachIndexed { i, l ->
                     Text(
                         l.uppercase(),
-                        Modifier.width(widths.getOrElse(i) { 120.dp }).padding(horizontal = 10.dp),
+                        Modifier.width(if (i == 0) COL_FIRST_WIDTH else COL_WIDTH).padding(end = 10.dp),
                         color = c.muted, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
-                Box(Modifier.width(8.dp))
             }
             HorizontalDivider(color = c.line)
         }
@@ -760,13 +730,7 @@ private fun SheetTableHeader(labels: List<String>, widths: List<Dp>, scroll: Scr
 }
 
 @Composable
-private fun SheetRow(
-    row: SheetRowView,
-    widths: List<Dp>,
-    scroll: ScrollState,
-    highlight: Boolean,
-    showDivider: Boolean
-) {
+private fun SheetRow(row: SheetRowView, highlight: Boolean, showDivider: Boolean, scrollState: ScrollState) {
     val c = LocalAppColors.current
     Box(Modifier.padding(horizontal = 16.dp)) {
         Column(
@@ -776,21 +740,23 @@ private fun SheetRow(
                 .background(if (highlight) c.accent.copy(alpha = 0.16f) else Color.Transparent)
         ) {
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(scroll).padding(vertical = 16.dp),
+                Modifier
+                    .horizontalScroll(scrollState)
+                    .padding(start = 18.dp, end = 18.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.width(8.dp))
                 row.cells.forEachIndexed { i, v ->
                     Text(
                         if (v.isEmpty()) "—" else v,
-                        Modifier.width(widths.getOrElse(i) { 120.dp }).padding(horizontal = 10.dp),
+                        Modifier.width(if (i == 0) COL_FIRST_WIDTH else COL_WIDTH).padding(end = 10.dp),
                         color = if (v.isEmpty()) c.muted else c.text,
                         fontFamily = if (i == 0) FontFamily.Monospace else FontFamily.Default,
                         fontWeight = if (i == 0) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Box(Modifier.width(8.dp))
             }
             if (showDivider) HorizontalDivider(color = c.line)
         }
