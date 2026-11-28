@@ -22,9 +22,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -61,18 +64,41 @@ private fun SheetListScreen(vm: PartsViewModel, onBack: () -> Unit, onOpen: (She
     val c = LocalAppColors.current
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showAdd by rememberSaveable { mutableStateOf(false) }
+    // The connection settings stay tucked away behind the status dot (open by default only until set up).
+    var showConn by rememberSaveable { mutableStateOf(vm.scriptUrl.isBlank()) }
+    val problem = vm.scriptUrl.isBlank() || vm.scriptOk == false
+
+    LaunchedEffect(Unit) {
+        if (vm.scriptUrl.isNotBlank()) vm.testScript()
+    }
 
     Column(Modifier.fillMaxSize().background(c.bg).statusBarsPadding()) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 10.dp, end = 22.dp, top = 10.dp, bottom = 12.dp),
+            Modifier.fillMaxWidth().padding(start = 10.dp, end = 14.dp, top = 10.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack, tint = c.text)
-            Column(Modifier.padding(start = 6.dp)) {
+            Column(Modifier.weight(1f).padding(start = 6.dp)) {
                 Eyebrow("Stock taking")
                 Text(
                     "Sheets",
                     color = c.text, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp
+                )
+            }
+            // Status dot: green = connected, red = needs attention. Tap to open the connection settings.
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (showConn) c.surface2 else Color.Transparent)
+                    .clickable { showConn = !showConn },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(if (problem) c.error else c.success)
                 )
             }
         }
@@ -81,6 +107,14 @@ private fun SheetListScreen(vm: PartsViewModel, onBack: () -> Unit, onOpen: (She
             Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
+            if (showConn) {
+                item {
+                    Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        ConnectionCard(vm, onClose = { showConn = false })
+                    }
+                }
+            }
+
             if (vm.sheetLinks.isEmpty()) {
                 item {
                     Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
@@ -137,12 +171,6 @@ private fun SheetListScreen(vm: PartsViewModel, onBack: () -> Unit, onOpen: (She
                 }
             }
 
-            item {
-                Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 22.dp)) {
-                    ConnectionCard(vm)
-                }
-            }
-
             item { Box(Modifier.navigationBarsPadding()) }
         }
     }
@@ -173,17 +201,29 @@ private fun SheetCard(name: String, onOpen: () -> Unit, onEdit: () -> Unit) {
 }
 
 /**
- * One-time setup: the person copies a small Google Apps Script from here, deploys it as a
- * web app, and pastes its URL back. That lets the app read and write their Google Sheets.
+ * The Google connection settings (opened from the status dot). Change the link any time:
+ * only the link is replaced — your sheets, boxes and layouts stay exactly as they are.
  */
 @Composable
-private fun ConnectionCard(vm: PartsViewModel) {
+private fun ConnectionCard(vm: PartsViewModel, onClose: () -> Unit) {
     val c = LocalAppColors.current
     val context = LocalContext.current
-    var open by rememberSaveable { mutableStateOf(vm.scriptUrl.isBlank()) }
+    val connected = vm.scriptUrl.isNotBlank()
     var url by remember { mutableStateOf(vm.scriptUrl) }
     var error by remember { mutableStateOf("") }
-    val connected = vm.scriptUrl.isNotBlank()
+    var steps by remember { mutableStateOf(!connected) }
+
+    val statusText = when {
+        !connected -> "Not connected yet"
+        vm.scriptOk == false -> vm.scriptNote.ifBlank { "There's a problem with the connection" }
+        vm.scriptOk == true -> "Connected"
+        else -> "Checking…"
+    }
+    val statusColor = when {
+        !connected || vm.scriptOk == false -> c.error
+        vm.scriptOk == true -> c.success
+        else -> c.muted
+    }
 
     Column(
         Modifier
@@ -191,48 +231,53 @@ private fun ConnectionCard(vm: PartsViewModel) {
             .lift(RadiusXl)
             .clip(RadiusXl)
             .background(c.surface)
+            .padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { open = !open }
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f).padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 SectionLabel("Google connection")
                 Text(
-                    if (connected) "Connected" else "Not connected yet",
-                    color = if (connected) c.success else c.muted,
-                    fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
+                    statusText,
+                    color = statusColor, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 20.sp
                 )
             }
-            Box(
-                Modifier.size(26.dp).clip(CircleShape).background(if (open) c.accent else c.surface2),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (open) "–" else "+",
-                    color = if (open) c.onAccent else c.muted,
-                    fontSize = 16.sp, lineHeight = 16.sp
-                )
-            }
+            IconBtn(Icons.Filled.Close, "Close", onClose, tint = c.muted, background = c.surface2, size = 36.dp)
         }
-        if (open) {
-            Column(
-                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    "One-time setup so the app can read and fill your Google Sheets:\n" +
-                        "1. Tap Copy script.\n" +
-                        "2. Open script.google.com, tap New project, delete the sample code, paste, and Save.\n" +
-                        "3. Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone. Deploy, then allow access.\n" +
-                        "4. Paste the Web app URL below and tap Save.\n\n" +
-                        "Your sheet must be a real Google Sheet. If it shows .XLSX, use File > Save as Google Sheets and add that new link here.",
-                    Modifier.padding(horizontal = 4.dp),
-                    color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp
+
+        Column(Modifier.padding(end = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillField(
+                value = url,
+                onValueChange = { url = it; error = "" },
+                placeholder = "Paste the Web app URL",
+                modifier = Modifier.fillMaxWidth(),
+                forceUppercase = false
+            )
+            StatusText(error, c.error)
+            PillButton(
+                if (connected) "Save changes" else "Save connection",
+                onClick = {
+                    val u = url.trim()
+                    if (!u.startsWith("https://") || !u.contains("/exec")) {
+                        error = "That should be the Web app URL ending in /exec."
+                    } else {
+                        error = ""
+                        vm.saveScriptUrl(u)
+                        onClose()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton(
+                    "Test connection",
+                    onClick = { vm.testScript() },
+                    modifier = Modifier.weight(1f),
+                    container = c.surface2, content = c.text
                 )
                 PillButton(
                     "Copy script",
@@ -242,32 +287,33 @@ private fun ConnectionCard(vm: PartsViewModel) {
                         cm.setPrimaryClip(ClipData.newPlainText("Parts Picker script", script))
                         Toast.makeText(context, "Script copied", Toast.LENGTH_SHORT).show()
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f),
                     container = c.surface2, content = c.text
                 )
-                PillField(
-                    value = url,
-                    onValueChange = { url = it; error = "" },
-                    placeholder = "Paste the Web app URL",
-                    modifier = Modifier.fillMaxWidth(),
-                    forceUppercase = false
-                )
-                StatusText(error, c.error)
-                PillButton(
-                    "Save connection",
-                    onClick = {
-                        val u = url.trim()
-                        if (!u.startsWith("https://") || !u.contains("/exec")) {
-                            error = "That should be the Web app URL ending in /exec."
-                        } else {
-                            error = ""
-                            vm.saveScriptUrl(u)
-                            open = false
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
+            }
+            Text(
+                if (steps) "Hide setup steps" else "Show setup steps",
+                Modifier
+                    .clip(PillShape)
+                    .clickable { steps = !steps }
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                color = c.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold
+            )
+            if (steps) {
+                Text(
+                    "One-time setup so the app can read and fill your Google Sheets:\n" +
+                        "1. Tap Copy script.\n" +
+                        "2. Open script.google.com, tap New project, delete the sample code, paste, and Save.\n" +
+                        "3. Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone. Deploy, then allow access.\n" +
+                        "4. Paste the Web app URL above and tap Save.\n\n" +
+                        "Your sheet must be a real Google Sheet. If it shows .XLSX, use File > Save as Google Sheets and add that new link here.",
+                    color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp
                 )
             }
+            Text(
+                "Changing the link keeps all your sheets, boxes and layouts.",
+                color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium
+            )
         }
     }
 }
