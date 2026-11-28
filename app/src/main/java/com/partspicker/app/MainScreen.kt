@@ -137,6 +137,9 @@ fun MainScreen(
         vm.checkForUpdate(BuildConfig.VERSION_NAME)
     }
 
+    // While searching, the page collapses to just the search bar and the results.
+    val searching = vm.searchQuery.isNotBlank()
+
     val countLabel = when {
         rows.isEmpty() -> ""
         grouped -> "${rows.size} location${if (rows.size == 1) "" else "s"} · ${vm.parts.size} part${if (vm.parts.size == 1) "" else "s"}"
@@ -155,55 +158,64 @@ fun MainScreen(
                 .imePadding(),
             contentPadding = PaddingValues(bottom = 150.dp)
         ) {
-            vm.updateInfo?.let { info ->
-                item {
-                    UpdateBanner(
-                        info = info,
-                        onUpdate = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.url)))
-                        },
-                        onDismiss = vm::dismissUpdateBanner
-                    )
-                }
-            }
-
-            item {
-                Column(Modifier.padding(start = 22.dp, end = 22.dp, top = 30.dp, bottom = 6.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Eyebrow("Inventory")
-                        // Easter egg: tap the version to check for an update, every time.
-                        Text(
-                            "v${BuildConfig.VERSION_NAME}",
-                            Modifier
-                                .clip(PillShape)
-                                .clickable {
-                                    vm.checkForUpdateNow(BuildConfig.VERSION_NAME) { msg ->
-                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            color = c.muted,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+            if (!searching) {
+                vm.updateInfo?.let { info ->
+                    item(key = "banner") {
+                        UpdateBanner(
+                            info = info,
+                            onUpdate = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.url)))
+                            },
+                            onDismiss = vm::dismissUpdateBanner
                         )
                     }
-                    Text(
-                        "Parts Picker",
-                        color = c.text,
-                        fontSize = 44.sp,
-                        lineHeight = 44.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-2).sp
-                    )
+                }
+
+                item(key = "title") {
+                    Column(Modifier.padding(start = 22.dp, end = 22.dp, top = 30.dp, bottom = 6.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Eyebrow("Inventory")
+                            // Easter egg: tap the version to check for an update, every time.
+                            Text(
+                                "v${BuildConfig.VERSION_NAME}",
+                                Modifier
+                                    .clip(PillShape)
+                                    .clickable {
+                                        vm.checkForUpdateNow(BuildConfig.VERSION_NAME) { msg ->
+                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                color = c.muted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Text(
+                            "Parts Picker",
+                            color = c.text,
+                            fontSize = 44.sp,
+                            lineHeight = 44.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-2).sp
+                        )
+                    }
                 }
             }
 
-            stickyHeader {
-                Box(Modifier.fillMaxWidth().background(c.bg).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            // Stable key so the search field keeps focus (and the keyboard stays up) while the
+            // items above it appear/disappear.
+            stickyHeader(key = "search") {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(c.bg)
+                        .padding(start = 16.dp, end = 16.dp, top = if (searching) 16.dp else 12.dp, bottom = 12.dp)
+                ) {
                     PillField(
                         value = vm.searchQuery,
                         onValueChange = { vm.searchQuery = it },
@@ -219,15 +231,17 @@ fun MainScreen(
                 }
             }
 
-            item { Bento(vm.parts.size, vm.locations.size, vm.modelCodes.size) }
+            if (!searching) {
+                item(key = "bento") { Bento(vm.parts.size, vm.locations.size, vm.modelCodes.size) }
 
-            if (dupCount > 0) {
-                item { DupAlert(dupCount) { vm.showDupView = true } }
+                if (dupCount > 0) {
+                    item(key = "dup") { DupAlert(dupCount) { vm.showDupView = true } }
+                }
+
+                item(key = "entry") { EntryCard(vm, partFocus) }
             }
 
-            item { EntryCard(vm, partFocus) }
-
-            item {
+            item(key = "count") {
                 Text(
                     countLabel,
                     Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp),
@@ -237,10 +251,10 @@ fun MainScreen(
                 )
             }
 
-            item { TableHeader() }
+            item(key = "thead") { TableHeader() }
 
             if (sections.isEmpty()) {
-                item {
+                item(key = "empty") {
                     Box(Modifier.padding(horizontal = 16.dp)) {
                         Box(
                             Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 18.dp, vertical = 44.dp),
@@ -269,7 +283,7 @@ fun MainScreen(
                 }
             }
 
-            item {
+            item(key = "tail") {
                 Box(Modifier.padding(horizontal = 16.dp)) {
                     Box(
                         Modifier
