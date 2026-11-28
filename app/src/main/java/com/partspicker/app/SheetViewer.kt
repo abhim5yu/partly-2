@@ -4,10 +4,12 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateOffsetAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -70,6 +72,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -85,7 +88,7 @@ private const val TABLE_START = 3
 /**
  * A Google Sheet in the app's own UI: input boxes (named by you, each linked to one sheet
  * column, arranged on an 8 x 10 grid) that add an entry to the sheet, and the latest sheet
- * contents as a table. The table button at the top opens the whole sheet.
+ * contents as a table that scrolls sideways. The table button at the top opens the whole sheet.
  */
 @Composable
 fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) {
@@ -99,6 +102,8 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
     var showFull by rememberSaveable { mutableStateOf(false) }
     val fields = remember(sheet.fields) { sheet.fields.laidOut() }
     var draft by remember { mutableStateOf(fields) }
+    // One scroll state shared by the table header and every row, so they slide sideways together.
+    val tableScroll = rememberScrollState()
 
     BackHandler(onBack = onBack)
 
@@ -121,6 +126,15 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
                 val cells = fields.map { f -> row.getOrNull(f.col - 1).orEmpty().trim() }
                 if (cells.any { it.isNotEmpty() }) SheetRowView(i + 2, cells) else null
             }
+        }
+    }
+
+    // Each column is as wide as its longest text (within sensible limits) so nothing is squeezed.
+    val colWidths = remember(rows, fields) {
+        fields.mapIndexed { i, f ->
+            val longest = maxOf(f.label.length, rows.maxOfOrNull { it.cells.getOrNull(i)?.length ?: 0 } ?: 0)
+                .coerceAtMost(30)
+            (longest * 9 + 36).coerceIn(84, 260).dp
         }
     }
 
@@ -223,7 +237,7 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
                 }
 
                 // 2: table header
-                item { SheetTableHeader(fields.map { it.label }) }
+                item { SheetTableHeader(fields.map { it.label }, colWidths, tableScroll) }
 
                 if (rows.isEmpty()) {
                     item {
@@ -247,7 +261,13 @@ fun SheetViewerScreen(vm: PartsViewModel, sheet: SheetLink, onBack: () -> Unit) 
                 }
 
                 itemsIndexed(rows, key = { _, r -> r.rowNum }) { index, r ->
-                    SheetRow(r, highlight = r.rowNum == vm.lastAddedRow, showDivider = index != rows.lastIndex)
+                    SheetRow(
+                        row = r,
+                        widths = colWidths,
+                        scroll = tableScroll,
+                        highlight = r.rowNum == vm.lastAddedRow,
+                        showDivider = index != rows.lastIndex
+                    )
                 }
 
                 item {
@@ -709,10 +729,8 @@ private fun LayoutGridEditor(fields: List<SheetField>, onChange: (List<SheetFiel
     }
 }
 
-private const val W_FIRST = 1.4f
-
 @Composable
-private fun SheetTableHeader(labels: List<String>) {
+private fun SheetTableHeader(labels: List<String>, widths: List<Dp>, scroll: ScrollState) {
     val c = LocalAppColors.current
     Box(Modifier.padding(horizontal = 16.dp)) {
         Column(
@@ -721,15 +739,20 @@ private fun SheetTableHeader(labels: List<String>) {
                 .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
                 .background(c.surface)
         ) {
-            Row(Modifier.padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 12.dp)) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(scroll).padding(top = 18.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.width(8.dp))
                 labels.forEachIndexed { i, l ->
                     Text(
                         l.uppercase(),
-                        Modifier.weight(if (i == 0) W_FIRST else 1f).padding(end = 6.dp),
+                        Modifier.width(widths.getOrElse(i) { 120.dp }).padding(horizontal = 10.dp),
                         color = c.muted, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
+                Box(Modifier.width(8.dp))
             }
             HorizontalDivider(color = c.line)
         }
@@ -737,7 +760,13 @@ private fun SheetTableHeader(labels: List<String>) {
 }
 
 @Composable
-private fun SheetRow(row: SheetRowView, highlight: Boolean, showDivider: Boolean) {
+private fun SheetRow(
+    row: SheetRowView,
+    widths: List<Dp>,
+    scroll: ScrollState,
+    highlight: Boolean,
+    showDivider: Boolean
+) {
     val c = LocalAppColors.current
     Box(Modifier.padding(horizontal = 16.dp)) {
         Column(
@@ -747,19 +776,21 @@ private fun SheetRow(row: SheetRowView, highlight: Boolean, showDivider: Boolean
                 .background(if (highlight) c.accent.copy(alpha = 0.16f) else Color.Transparent)
         ) {
             Row(
-                Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                Modifier.fillMaxWidth().horizontalScroll(scroll).padding(vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box(Modifier.width(8.dp))
                 row.cells.forEachIndexed { i, v ->
                     Text(
                         if (v.isEmpty()) "—" else v,
-                        Modifier.weight(if (i == 0) W_FIRST else 1f).padding(end = 6.dp),
+                        Modifier.width(widths.getOrElse(i) { 120.dp }).padding(horizontal = 10.dp),
                         color = if (v.isEmpty()) c.muted else c.text,
                         fontFamily = if (i == 0) FontFamily.Monospace else FontFamily.Default,
                         fontWeight = if (i == 0) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 15.sp
+                        fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis
                     )
                 }
+                Box(Modifier.width(8.dp))
             }
             if (showDivider) HorizontalDivider(color = c.line)
         }
